@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAuth } from '../composables/useAuth'
+import { useFeedback } from '../composables/useFeedback'
 import AppHeader from '../components/AppHeader.vue'
 import DecisionCard from '../components/DecisionCard.vue'
 import DailyDigest from '../components/DailyDigest.vue'
@@ -9,6 +10,7 @@ import SettingsModal from '../components/SettingsModal.vue'
 import ToastNotification from '../components/ToastNotification.vue'
 
 const { signOut } = useAuth()
+const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
 
 // ── Toast ──
 const toastMessage = ref('')
@@ -122,6 +124,10 @@ function skipCard(cardId) {
   showToast('Skipped')
 }
 
+function handleFeedback(entry) {
+  addFeedback(entry)
+}
+
 // ── Daily Digest ──
 const digestItems = ref([
   { source: 'Patagonia', tag: 'Sale', tagClass: 'tag-sale', summary: 'End-of-season sale — 40% off winter gear. Nano Puff and Better Sweater included. Free shipping over $99. Ends Thursday.' },
@@ -166,6 +172,7 @@ function handleLogout() {
           @approve="approveCard"
           @skip="skipCard"
           @open-email="openEmail"
+          @feedback="handleFeedback"
         />
       </div>
 
@@ -184,8 +191,12 @@ function handleLogout() {
     <SettingsModal
       :open="settingsOpen"
       :sources="briefingSources"
+      :feedback-log="feedbackLog"
+      :override-stats="overrideStats"
+      :total-overrides="totalOverrides"
       @close="settingsOpen = false"
       @remove-source="removeBriefingSource"
+      @clear-feedback="clearFeedback"
     />
 
     <ToastNotification :message="toastMessage" :visible="toastVisible" />

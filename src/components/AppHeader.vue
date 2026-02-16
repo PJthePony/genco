@@ -5,10 +5,8 @@ defineEmits(['open-settings', 'logout'])
 <template>
   <header class="app-header">
     <div class="header-left">
-      <div class="header-logo">
-        <img src="/logo.svg" alt="pjt" width="15" height="15" />
-      </div>
-      <span class="header-title">Genco</span>
+      <img src="/logo.svg" alt="pjt" width="44" height="42" class="app-logo" />
+      <span class="app-name">Genco</span>
     </div>
     <div class="header-right">
       <button class="header-btn" @click="$emit('open-settings')" aria-label="Settings">
@@ -40,21 +38,15 @@ defineEmits(['open-settings', 'logout'])
   gap: 10px;
 }
 
-.header-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-md);
-  background: var(--color-accent-soft);
-  border: 1px solid var(--color-accent-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.app-logo {
+  display: block;
 }
 
-.header-title {
+.app-name {
   font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+  color: var(--color-text);
 }
 
 .header-right {
