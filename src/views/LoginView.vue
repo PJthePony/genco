@@ -72,6 +72,10 @@ const handleSubmit = async () => {
         </p>
       </form>
     </div>
+    <div class="login-legal">
+      <a href="https://tanzillo.ai/privacy.html" target="_blank">Privacy</a>
+      <a href="https://tanzillo.ai/terms.html" target="_blank">Terms</a>
+    </div>
   </div>
 </template>
 
@@ -238,5 +242,23 @@ const handleSubmit = async () => {
   font-size: 12px;
   margin-top: 12px;
   margin-bottom: 8px;
+}
+
+.login-legal {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.login-legal a {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.login-legal a:hover {
+  color: var(--color-primary);
 }
 </style>
