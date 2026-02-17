@@ -126,24 +126,9 @@ async function skipCard(cardId) {
 }
 
 async function handleFeedback(entry) {
-  // Save feedback to backend
-  try {
-    await api('/feedback', {
-      method: 'POST',
-      body: JSON.stringify({
-        emailQueueId: entry.cardId,
-        sender: entry.sender,
-        originalAction: entry.originalAction,
-        chosenAction: entry.chosenAction,
-        reason: entry.reason,
-      }),
-    })
-  } catch (err) {
-    console.error('Failed to save feedback:', err)
-  }
-
   // Map the chosen display label back to the backend action key
-  // and update the card so approveCard sends the correct action
+  // and update the card BEFORE the async call so approveCard
+  // (which fires synchronously after this) reads the new key
   const ACTION_KEY_MAP = {
     'Reply': 'reply',
     '+ Task': 'add_task',
@@ -166,6 +151,22 @@ async function handleFeedback(entry) {
 
   // Also update local state
   addFeedback(entry)
+
+  // Save feedback to backend (fire-and-forget, doesn't block approve)
+  try {
+    await api('/feedback', {
+      method: 'POST',
+      body: JSON.stringify({
+        emailQueueId: entry.cardId,
+        sender: entry.sender,
+        originalAction: entry.originalAction,
+        chosenAction: entry.chosenAction,
+        reason: entry.reason,
+      }),
+    })
+  } catch (err) {
+    console.error('Failed to save feedback:', err)
+  }
 }
 
 // ── Scan ──
