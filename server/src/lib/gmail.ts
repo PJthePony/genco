@@ -349,6 +349,21 @@ export async function archiveMessage(
 }
 
 /**
+ * Move a message back to the inbox (add INBOX label).
+ */
+export async function unarchiveMessage(
+  tokens: GoogleTokens,
+  messageId: string,
+): Promise<void> {
+  const { gmail } = getGmailClient(tokens);
+  await gmail.users.messages.modify({
+    userId: "me",
+    id: messageId,
+    requestBody: { addLabelIds: ["INBOX"] },
+  });
+}
+
+/**
  * Create a draft reply.
  */
 export async function createDraft(

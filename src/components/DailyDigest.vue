@@ -5,7 +5,7 @@ defineProps({
   items: Array,
 })
 
-defineEmits(['manage-sources'])
+defineEmits(['manage-sources', 'promote'])
 
 const expanded = ref(false)
 
@@ -31,10 +31,11 @@ function toggle() { expanded.value = !expanded.value }
     </div>
     <div class="briefing-digest-body">
       <div class="briefing-digest-items">
-        <div class="briefing-item" v-for="(item, i) in items" :key="i">
+        <div class="briefing-item" v-for="(item, i) in items" :key="item.id || i">
           <div class="briefing-item-header">
             <span class="briefing-item-source">{{ item.source }}</span>
             <span class="briefing-item-tag" :class="item.tagClass">{{ item.tag }}</span>
+            <button class="briefing-item-action" @click.stop="$emit('promote', item.id)">Action</button>
           </div>
           <div class="briefing-item-summary">{{ item.summary }}</div>
         </div>
@@ -174,6 +175,27 @@ function toggle() { expanded.value = !expanded.value }
 .tag-sale { background: var(--color-accent-soft); color: var(--color-accent); }
 .tag-news { background: var(--color-blue-soft); color: var(--color-blue); }
 .tag-update { background: var(--color-purple-soft); color: var(--color-purple); }
+
+.briefing-item-action {
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text-muted);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.briefing-item-action:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+}
 
 .briefing-item-summary {
   font-size: 0.78rem;

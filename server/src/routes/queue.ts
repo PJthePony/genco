@@ -1,10 +1,11 @@
 import { Hono } from "hono";
-import { eq, and, desc, isNotNull, gte } from "drizzle-orm";
+import { eq, and, ne, desc, isNotNull, gte } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { emailQueue } from "../db/schema.js";
+import { emailQueue, gmailConnections } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
+import { unarchiveMessage, refreshAccessToken, type GoogleTokens } from "../lib/gmail.js";
 
 const VALID_ACTIONS = [
   "reply",
@@ -36,6 +37,7 @@ queueRoutes.get("/", async (c) => {
       eq(emailQueue.userId, user.sub),
       eq(emailQueue.status, "pending"),
       isNotNull(emailQueue.aiSummary),
+      ne(emailQueue.aiRecommendedAction, "briefing"),
     ),
     orderBy: [desc(emailQueue.isUrgent), desc(emailQueue.receivedAt)],
     columns: {
@@ -134,4 +136,55 @@ queueRoutes.post("/:id/action", async (c) => {
     unsubscribeMethod: result.unsubscribeMethod,
     unsubscribeUrl: result.unsubscribeUrl,
   });
+});
+
+// POST /queue/:id/promote — move a briefing item into the decision queue
+queueRoutes.post("/:id/promote", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return c.json({ error: "Invalid email ID" }, 400);
+  }
+
+  // Change the recommended action so it appears in the decision queue
+  const updated = await db
+    .update(emailQueue)
+    .set({ aiRecommendedAction: "archive" })
+    .where(
+      and(
+        eq(emailQueue.id, id),
+        eq(emailQueue.userId, user.sub),
+        eq(emailQueue.aiRecommendedAction, "briefing"),
+      ),
+    )
+    .returning({ gmailMessageId: emailQueue.gmailMessageId });
+
+  if (updated.length === 0) {
+    return c.json({ error: "Item not found or already promoted" }, 404);
+  }
+
+  // Move the email back to the inbox in Gmail
+  try {
+    const connection = await db.query.gmailConnections.findFirst({
+      where: eq(gmailConnections.userId, user.sub),
+    });
+
+    if (connection) {
+      let tokens = connection.googleTokens as GoogleTokens;
+      if (tokens.expiry_date && tokens.expiry_date < Date.now() + 5 * 60 * 1000) {
+        tokens = await refreshAccessToken(tokens);
+        await db
+          .update(gmailConnections)
+          .set({ googleTokens: tokens, updatedAt: new Date() })
+          .where(eq(gmailConnections.id, connection.id));
+      }
+      await unarchiveMessage(tokens, updated[0].gmailMessageId);
+    }
+  } catch (err) {
+    console.warn("Failed to move email back to inbox:", err);
+    // Non-fatal: the item is still promoted in the queue
+  }
+
+  return c.json({ ok: true });
 });

@@ -188,6 +188,19 @@ function handleLogout() {
   signOut()
 }
 
+// ── Promote digest item to decision queue ──
+async function promoteDigestItem(itemId) {
+  try {
+    await api(`/queue/${itemId}/promote`, { method: 'POST' })
+    // Remove from digest, refresh queue to show the new card
+    digestItems.value = digestItems.value.filter(d => d.id !== itemId)
+    await fetchQueue()
+    showToast('Moved to action queue')
+  } catch (err) {
+    showToast(err.message || 'Failed to promote item')
+  }
+}
+
 // ── Pull-to-refresh ──
 const pullDistance = ref(0)
 const pulling = ref(false)
@@ -287,6 +300,7 @@ onUnmounted(() => {
         v-if="digestItems.length > 0"
         :items="digestItems"
         @manage-sources="settingsOpen = true"
+        @promote="promoteDigestItem"
       />
 
       <div id="card-list">
