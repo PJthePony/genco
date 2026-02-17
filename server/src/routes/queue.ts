@@ -18,9 +18,9 @@ const VALID_ACTIONS = [
 
 const actionSchema = z.object({
   action: z.enum(VALID_ACTIONS),
-  replyBody: z.string().max(10000).optional(),
-  replyContext: z.string().max(1000).optional(),
-  taskTitle: z.string().max(500).optional(),
+  replyBody: z.string().max(10000).nullish(),
+  replyContext: z.string().max(1000).nullish(),
+  taskTitle: z.string().max(500).nullish(),
 });
 
 export const queueRoutes = new Hono<{ Variables: { user: AuthUser } }>();
