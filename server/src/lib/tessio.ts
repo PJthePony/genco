@@ -17,6 +17,10 @@ export async function createTessioTask(
   title: string,
   notes?: string,
 ): Promise<CreateTaskResult> {
+  if (!env.TESSIO_API_URL || !env.TESSIO_SERVICE_KEY) {
+    throw new Error("Tessio not configured — add TESSIO_API_URL and TESSIO_SERVICE_KEY");
+  }
+
   const response = await fetch(env.TESSIO_API_URL, {
     method: "POST",
     headers: {
