@@ -2,11 +2,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useFeedback } from '../composables/useFeedback'
-import { useQueue } from '../composables/useQueue'
+import { useGroupedQueue } from '../composables/useGroupedQueue'
 import { useDigest } from '../composables/useDigest'
 import { api } from '../composables/useApi'
 import AppHeader from '../components/AppHeader.vue'
-import DecisionCard from '../components/DecisionCard.vue'
+import ActionSection from '../components/ActionSection.vue'
 import DailyDigest from '../components/DailyDigest.vue'
 import EmailModal from '../components/EmailModal.vue'
 import SettingsModal from '../components/SettingsModal.vue'
@@ -14,8 +14,11 @@ import ToastNotification from '../components/ToastNotification.vue'
 
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
-const { items: cards, loading, scanning, error, remaining, urgentCount, allCleared, fetchQueue, scanInbox, executeAction } = useQueue()
+const { sections, items: cards, loading, scanning, error, remaining, urgentCount, allCleared, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
 const { items: digestItems, fetchDigest } = useDigest()
+
+const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
+const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
 
 // ── Toast ──
 const toastMessage = ref('')
@@ -222,6 +225,49 @@ async function reprocessEmails() {
   }
 }
 
+// ── Bulk Approve ──
+const bulkProgress = ref({})
+
+async function handleBulkApprove(sectionKey) {
+  const section = sections.value.find(s => s.key === sectionKey)
+  if (!section || section.count === 0) return
+
+  const cardsToApprove = [...section.cards]
+  bulkProgress.value[sectionKey] = {
+    active: true,
+    completed: 0,
+    total: cardsToApprove.length,
+  }
+
+  const promises = cardsToApprove.map(async (card) => {
+    try {
+      await executeAction(card.id, card.actionKey, {
+        replyBody: card.replyDraft,
+        replyContext: card.replyContext || undefined,
+        taskTitle: card.taskTitle,
+      })
+      card.cleared = true
+    } catch (err) {
+      console.error(`Bulk action failed for ${card.id}:`, err)
+    } finally {
+      bulkProgress.value[sectionKey].completed++
+    }
+  })
+
+  await Promise.allSettled(promises)
+
+  const successCount = cardsToApprove.filter(c => c.cleared).length
+  const failCount = cardsToApprove.length - successCount
+
+  bulkProgress.value[sectionKey] = { active: false, completed: 0, total: 0 }
+
+  if (failCount === 0) {
+    showToast(`${successCount} items processed`)
+  } else {
+    showToast(`${successCount} done, ${failCount} failed`)
+  }
+}
+
 // ── Promote digest item to decision queue ──
 async function promoteDigestItem(itemId) {
   try {
@@ -342,6 +388,19 @@ onUnmounted(() => {
         <button class="btn-retry" @click="fetchQueue">Retry</button>
       </div>
 
+      <!-- Action Items (replies + tasks) -->
+      <ActionSection
+        v-if="actionSection?.count > 0"
+        :section="actionSection"
+        :bulk-progress="bulkProgress['action']"
+        @approve="approveCard"
+        @skip="skipCard"
+        @open-email="openEmail"
+        @feedback="handleFeedback"
+        @bulk-approve="handleBulkApprove"
+      />
+
+      <!-- Daily Digest -->
       <DailyDigest
         v-if="digestItems.length > 0"
         :items="digestItems"
@@ -349,17 +408,17 @@ onUnmounted(() => {
         @promote="promoteDigestItem"
       />
 
-      <div id="card-list">
-        <DecisionCard
-          v-for="card in cards"
-          :key="card.id"
-          :card="card"
-          @approve="approveCard"
-          @skip="skipCard"
-          @open-email="openEmail"
-          @feedback="handleFeedback"
-        />
-      </div>
+      <!-- Archive (low priority cleanup) -->
+      <ActionSection
+        v-if="archiveSection?.count > 0"
+        :section="archiveSection"
+        :bulk-progress="bulkProgress['archive']"
+        @approve="approveCard"
+        @skip="skipCard"
+        @open-email="openEmail"
+        @feedback="handleFeedback"
+        @bulk-approve="handleBulkApprove"
+      />
 
       <div v-if="allCleared" class="empty-state visible">
         <h2>All clear, Don.</h2>
