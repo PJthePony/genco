@@ -188,6 +188,21 @@ function handleLogout() {
   signOut()
 }
 
+// ── Sync Archives ──
+const syncing = ref(false)
+
+async function syncArchives() {
+  syncing.value = true
+  try {
+    const result = await api('/queue/sync-archives', { method: 'POST' })
+    showToast(`Archived ${result.archived} of ${result.total} in Gmail`)
+  } catch (err) {
+    showToast(err.message || 'Sync failed')
+  } finally {
+    syncing.value = false
+  }
+}
+
 // ── Promote digest item to decision queue ──
 async function promoteDigestItem(itemId) {
   try {
@@ -278,12 +293,19 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Scan button -->
-      <button class="btn-scan" :class="{ scanning }" @click="handleScan" :disabled="scanning">
-        <svg v-if="!scanning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        <span v-if="scanning" class="scan-spinner"></span>
-        {{ scanning ? 'Scanning…' : 'Scan inbox' }}
-      </button>
+      <!-- Action buttons -->
+      <div class="action-buttons">
+        <button class="btn-scan" :class="{ scanning }" @click="handleScan" :disabled="scanning">
+          <svg v-if="!scanning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <span v-if="scanning" class="scan-spinner"></span>
+          {{ scanning ? 'Scanning…' : 'Scan inbox' }}
+        </button>
+        <button class="btn-scan" :class="{ scanning: syncing }" @click="syncArchives" :disabled="syncing">
+          <svg v-if="!syncing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span v-if="syncing" class="scan-spinner"></span>
+          {{ syncing ? 'Syncing…' : 'Sync archives' }}
+        </button>
+      </div>
 
       <!-- Loading state -->
       <div v-if="loading && cards.length === 0" class="loading-state">
@@ -402,6 +424,12 @@ onUnmounted(() => {
   color: var(--color-accent);
 }
 
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
 .btn-scan {
   display: flex;
   align-items: center;
@@ -416,7 +444,6 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
-  margin-bottom: 20px;
 }
 
 .btn-scan:hover:not(:disabled) {
