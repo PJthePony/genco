@@ -14,6 +14,8 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   GOOGLE_REDIRECT_URI: z.string().url(),
   ANTHROPIC_API_KEY: z.string().startsWith("sk-ant-"),
+  TESSIO_API_URL: z.string().url(),
+  TESSIO_SERVICE_KEY: z.string().startsWith("tsvc_"),
   PORT: z.coerce.number().default(3001),
   APP_URL: z.string().url().default("http://localhost:3001"),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),

@@ -14,6 +14,7 @@ import {
   type GoogleTokens,
 } from "../lib/gmail.js";
 import { generateReplyDraft } from "../lib/claude.js";
+import { createTessioTask } from "../lib/tessio.js";
 
 export interface ActionResult {
   ok: boolean;
@@ -118,8 +119,14 @@ export async function executeAction(
       }
 
       case "add_task": {
-        // TODO: POST to Tessio API with tags: ['genco']
-        // For now, just mark as processed
+        const title =
+          payload?.taskTitle || email.aiTaskTitle || email.subject;
+        const notes = `From: ${email.fromName ?? email.fromEmail}\nSubject: ${email.subject}\n\n${email.aiSummary ?? ""}`.trim();
+        await createTessioTask(userId, title, notes);
+        // Archive after adding task if Gmail is connected
+        if (tokens) {
+          await archiveMessage(tokens, email.gmailMessageId);
+        }
         return { ok: true };
       }
 
