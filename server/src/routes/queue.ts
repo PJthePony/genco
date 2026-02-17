@@ -115,7 +115,7 @@ queueRoutes.post("/:id/action", async (c) => {
   });
 
   if (!result.ok) {
-    return c.json({ error: result.error }, 500);
+    return c.json({ error: result.error }, 422);
   }
 
   // Mark as processed

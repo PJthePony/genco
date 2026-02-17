@@ -110,7 +110,7 @@ async function approveCard(cardId, message) {
       showToast(message)
     }
   } catch (err) {
-    showToast('Action failed — try again')
+    showToast(err.message || 'Action failed — try again')
   }
 }
 

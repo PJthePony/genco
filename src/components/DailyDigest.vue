@@ -133,7 +133,8 @@ function toggle() { expanded.value = !expanded.value }
 }
 
 .briefing-digest.expanded .briefing-digest-body {
-  max-height: 600px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .briefing-digest-items {

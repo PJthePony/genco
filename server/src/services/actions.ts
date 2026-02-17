@@ -169,6 +169,8 @@ export async function executeAction(
       }
 
       case "briefing": {
+        if (!tokens) return { ok: false, error: "Gmail not connected" };
+
         // Add sender to briefing sources, archive email
         await db
           .insert(briefingSources)
@@ -179,9 +181,7 @@ export async function executeAction(
           })
           .onConflictDoNothing();
 
-        if (tokens) {
-          await archiveMessage(tokens, email.gmailMessageId);
-        }
+        await archiveMessage(tokens, email.gmailMessageId);
         return { ok: true };
       }
 
