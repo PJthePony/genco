@@ -87,6 +87,24 @@ queueRoutes.get("/digest", async (c) => {
   return c.json({ items });
 });
 
+// POST /queue/reprocess — move historical items to pending so they get classified
+queueRoutes.post("/reprocess", async (c) => {
+  const user = c.get("user");
+
+  const result = await db
+    .update(emailQueue)
+    .set({ status: "pending" })
+    .where(
+      and(
+        eq(emailQueue.userId, user.sub),
+        eq(emailQueue.status, "historical"),
+      ),
+    )
+    .returning({ id: emailQueue.id });
+
+  return c.json({ ok: true, requeued: result.length });
+});
+
 // POST /queue/sync-archives — retry Gmail archive for items still in inbox
 // Handles: (1) processed items whose Gmail archive failed, (2) briefing items never archived
 queueRoutes.post("/sync-archives", async (c) => {
