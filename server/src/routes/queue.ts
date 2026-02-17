@@ -109,9 +109,9 @@ queueRoutes.post("/:id/action", async (c) => {
 
   // Execute the action
   const result = await executeAction(user.sub, id, body.action, {
-    replyBody: body.replyBody,
-    replyContext: body.replyContext,
-    taskTitle: body.taskTitle,
+    replyBody: body.replyBody ?? undefined,
+    replyContext: body.replyContext ?? undefined,
+    taskTitle: body.taskTitle ?? undefined,
   });
 
   if (!result.ok) {
