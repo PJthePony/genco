@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { eq, and, ne, desc, isNotNull, gte } from "drizzle-orm";
+import { eq, and, ne, desc, isNotNull, gte, or, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { emailQueue, gmailConnections } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
-import { unarchiveMessage, refreshAccessToken, type GoogleTokens } from "../lib/gmail.js";
+import { archiveMessage, unarchiveMessage, refreshAccessToken, type GoogleTokens } from "../lib/gmail.js";
 
 const VALID_ACTIONS = [
   "reply",
@@ -85,6 +85,75 @@ queueRoutes.get("/digest", async (c) => {
   });
 
   return c.json({ items });
+});
+
+// POST /queue/sync-archives — retry Gmail archive for items still in inbox
+// Handles: (1) processed items whose Gmail archive failed, (2) briefing items never archived
+queueRoutes.post("/sync-archives", async (c) => {
+  const user = c.get("user");
+
+  const archiveActions = ["archive", "reply", "add_task", "unsubscribe", "briefing"];
+
+  // Find items that should be archived in Gmail:
+  // 1. Processed items with an archivable action
+  // 2. Pending briefing items (AI classified but scanner didn't archive)
+  const items = await db.query.emailQueue.findMany({
+    where: and(
+      eq(emailQueue.userId, user.sub),
+      or(
+        // Processed items that should have been archived
+        and(
+          eq(emailQueue.status, "processed"),
+          inArray(emailQueue.chosenAction, archiveActions),
+        ),
+        // Pending briefing items that were never archived in Gmail
+        and(
+          eq(emailQueue.status, "pending"),
+          eq(emailQueue.aiRecommendedAction, "briefing"),
+        ),
+      ),
+    ),
+    columns: {
+      id: true,
+      gmailMessageId: true,
+      chosenAction: true,
+      aiRecommendedAction: true,
+    },
+  });
+
+  if (items.length === 0) {
+    return c.json({ ok: true, archived: 0 });
+  }
+
+  // Get Gmail tokens
+  const connection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, user.sub),
+  });
+
+  if (!connection) {
+    return c.json({ error: "Gmail not connected" }, 422);
+  }
+
+  let tokens = connection.googleTokens as GoogleTokens;
+  if (tokens.expiry_date && tokens.expiry_date < Date.now() + 5 * 60 * 1000) {
+    tokens = await refreshAccessToken(tokens);
+    await db
+      .update(gmailConnections)
+      .set({ googleTokens: tokens, updatedAt: new Date() })
+      .where(eq(gmailConnections.id, connection.id));
+  }
+
+  let archived = 0;
+  for (const item of items) {
+    try {
+      await archiveMessage(tokens, item.gmailMessageId);
+      archived++;
+    } catch (err) {
+      console.warn(`Failed to archive ${item.gmailMessageId}:`, err);
+    }
+  }
+
+  return c.json({ ok: true, archived, total: items.length });
 });
 
 // POST /queue/:id/action — record chosen action + execute
