@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 
 const props = defineProps({
   card: Object,
@@ -10,7 +10,13 @@ const emit = defineEmits(['approve', 'skip', 'open-email', 'feedback'])
 const showingAlts = ref(false)
 const pendingAlt = ref(null)
 const feedbackText = ref('')
+const replyContext = ref('')
 const feedbackInput = ref(null)
+const replyContextInput = ref(null)
+
+const isReplyAction = computed(() =>
+  pendingAlt.value?.action === 'Reply'
+)
 
 function showAlts() { showingAlts.value = true }
 function hideAlts() { showingAlts.value = false; pendingAlt.value = null }
@@ -22,38 +28,49 @@ function approve(msg) {
 function selectAlt(action, msg) {
   pendingAlt.value = { action, msg }
   feedbackText.value = ''
+  replyContext.value = ''
   nextTick(() => {
-    feedbackInput.value?.focus()
+    if (action === 'Reply') {
+      replyContextInput.value?.focus()
+    } else {
+      feedbackInput.value?.focus()
+    }
   })
 }
 
 function submitFeedback() {
   const feedback = feedbackText.value.trim()
+  const replyInstructions = replyContext.value.trim()
   emit('feedback', {
     cardId: props.card.id,
     sender: props.card.sender,
     originalAction: props.card.action,
     chosenAction: pendingAlt.value.action,
     reason: feedback || null,
+    replyContext: replyInstructions || null,
     timestamp: new Date().toISOString(),
   })
   approve(pendingAlt.value.msg)
   pendingAlt.value = null
   feedbackText.value = ''
+  replyContext.value = ''
 }
 
 function skipFeedback() {
+  const replyInstructions = replyContext.value.trim()
   emit('feedback', {
     cardId: props.card.id,
     sender: props.card.sender,
     originalAction: props.card.action,
     chosenAction: pendingAlt.value.action,
     reason: null,
+    replyContext: replyInstructions || null,
     timestamp: new Date().toISOString(),
   })
   approve(pendingAlt.value.msg)
   pendingAlt.value = null
   feedbackText.value = ''
+  replyContext.value = ''
 }
 </script>
 
@@ -120,18 +137,34 @@ function skipFeedback() {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
         <span class="feedback-to">{{ pendingAlt?.action }}</span>
       </div>
-      <div class="feedback-question">Why'd you change it?</div>
+
+      <!-- Reply context input — only shown when changing to Reply -->
+      <template v-if="isReplyAction">
+        <div class="feedback-question">What should the reply say?</div>
+        <textarea
+          ref="replyContextInput"
+          v-model="replyContext"
+          class="feedback-input reply-context-input"
+          placeholder="e.g. Tell them I'm free Thursday afternoon, ask about the budget"
+          maxlength="500"
+          rows="2"
+        />
+      </template>
+
+      <div class="feedback-question">{{ isReplyAction ? 'Any feedback for Genco?' : "Why'd you change it?" }}</div>
       <form class="feedback-form" @submit.prevent="submitFeedback">
         <input
           ref="feedbackInput"
           v-model="feedbackText"
           type="text"
           class="feedback-input"
-          placeholder="e.g. I always reply to this person"
+          :placeholder="isReplyAction ? 'e.g. I always reply to this person' : 'e.g. I always reply to this person'"
           maxlength="200"
         />
         <div class="feedback-actions">
-          <button type="submit" class="btn-feedback-send" :disabled="!feedbackText.trim()">Send</button>
+          <button type="submit" class="btn-feedback-send" :disabled="isReplyAction ? !replyContext.trim() : !feedbackText.trim()">
+            {{ isReplyAction ? 'Generate Reply' : 'Send' }}
+          </button>
           <button type="button" class="btn-feedback-skip" @click="skipFeedback">Skip</button>
         </div>
       </form>
@@ -436,6 +469,15 @@ function skipFeedback() {
 
 .feedback-input:focus {
   border-color: var(--color-accent-border);
+}
+
+.reply-context-input {
+  resize: vertical;
+  min-height: 50px;
+  max-height: 120px;
+  margin-bottom: 8px;
+  line-height: 1.45;
+  box-sizing: border-box;
 }
 
 .feedback-actions {

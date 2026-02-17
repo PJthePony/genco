@@ -1,5 +1,6 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { api } from '../composables/useApi'
 
 const props = defineProps({
   open: Boolean,
@@ -9,7 +10,100 @@ const props = defineProps({
   totalOverrides: Number,
 })
 
-defineEmits(['close', 'remove-source', 'clear-feedback'])
+const emit = defineEmits(['close', 'remove-source', 'add-source', 'clear-feedback'])
+
+// Add sender form
+const addingSource = ref(false)
+const newEmail = ref('')
+const newName = ref('')
+const addError = ref('')
+const addLoading = ref(false)
+
+function startAddSource() {
+  addingSource.value = true
+  newEmail.value = ''
+  newName.value = ''
+  addError.value = ''
+}
+
+function cancelAddSource() {
+  addingSource.value = false
+  newEmail.value = ''
+  newName.value = ''
+  addError.value = ''
+}
+
+async function submitAddSource() {
+  const email = newEmail.value.trim()
+  const name = newName.value.trim()
+
+  if (!email) {
+    addError.value = 'Email address is required'
+    return
+  }
+  if (!email.includes('@')) {
+    addError.value = 'Enter a valid email address'
+    return
+  }
+  if (!name) {
+    addError.value = 'Display name is required'
+    return
+  }
+
+  addLoading.value = true
+  addError.value = ''
+
+  try {
+    await api('/settings/briefing-sources', {
+      method: 'POST',
+      body: JSON.stringify({
+        emailAddress: email,
+        displayName: name,
+      }),
+    })
+    addingSource.value = false
+    newEmail.value = ''
+    newName.value = ''
+    emit('add-source')
+  } catch (err) {
+    addError.value = 'Failed to add source'
+  } finally {
+    addLoading.value = false
+  }
+}
+
+// Gmail connection status
+const gmailEmail = ref(null)
+const gmailConnected = ref(false)
+const connectingGmail = ref(false)
+
+async function loadGmailStatus() {
+  try {
+    const data = await api('/settings/gmail')
+    gmailConnected.value = data.connected
+    gmailEmail.value = data.email
+  } catch (err) {
+    console.error('Failed to load Gmail status:', err)
+  }
+}
+
+async function connectGmail() {
+  connectingGmail.value = true
+  try {
+    const data = await api('/auth/google')
+    if (data.url) {
+      window.location.href = data.url
+    }
+  } catch (err) {
+    console.error('Failed to start Gmail connect:', err)
+    connectingGmail.value = false
+  }
+}
+
+// Load Gmail status when settings modal opens
+watch(() => props.open, (isOpen) => {
+  if (isOpen) loadGmailStatus()
+})
 
 const recentFeedback = computed(() =>
   (props.feedbackLog || []).slice(0, 5)
@@ -40,7 +134,16 @@ function timeAgo(timestamp) {
       <div class="settings-body">
         <div class="settings-group">
           <div class="settings-label">Email Accounts</div>
-          <div class="settings-row"><span>Gmail</span> <span class="settings-value">pjtanzillo@gmail.com</span></div>
+          <div v-if="gmailConnected" class="settings-row">
+            <span>Gmail</span>
+            <span class="settings-value">{{ gmailEmail }}</span>
+          </div>
+          <div v-else class="settings-row">
+            <span>Gmail</span>
+            <button class="btn-connect" @click="connectGmail" :disabled="connectingGmail">
+              {{ connectingGmail ? 'Connecting…' : 'Connect Gmail' }}
+            </button>
+          </div>
         </div>
         <div class="settings-group">
           <div class="settings-label">Scan Frequency</div>
@@ -58,7 +161,35 @@ function timeAgo(timestamp) {
               </button>
             </div>
           </div>
-          <div class="settings-row add-row"><span class="add-label">+ Add sender</span></div>
+          <!-- Add sender form -->
+          <div v-if="addingSource" class="add-source-form">
+            <input
+              v-model="newEmail"
+              type="email"
+              placeholder="email@example.com"
+              class="add-source-input"
+              @keydown.enter="submitAddSource"
+              @keydown.escape="cancelAddSource"
+            />
+            <input
+              v-model="newName"
+              type="text"
+              placeholder="Display name"
+              class="add-source-input"
+              @keydown.enter="submitAddSource"
+              @keydown.escape="cancelAddSource"
+            />
+            <div v-if="addError" class="add-source-error">{{ addError }}</div>
+            <div class="add-source-actions">
+              <button class="btn-add-cancel" @click="cancelAddSource">Cancel</button>
+              <button class="btn-add-confirm" @click="submitAddSource" :disabled="addLoading">
+                {{ addLoading ? 'Adding…' : 'Add' }}
+              </button>
+            </div>
+          </div>
+          <div v-else class="settings-row add-row" @click="startAddSource">
+            <span class="add-label">+ Add sender</span>
+          </div>
         </div>
 
         <!-- AI Learning / Feedback Log -->
@@ -275,11 +406,99 @@ function timeAgo(timestamp) {
 .add-row {
   justify-content: center;
   border-bottom: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.add-row:hover {
+  background: var(--color-bg);
 }
 
 .add-label {
   font-size: 0.72rem;
   color: var(--color-text-muted) !important;
+}
+
+/* ── Add Source Form ── */
+.add-source-form {
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-source-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.add-source-input:focus {
+  border-color: var(--color-accent);
+}
+
+.add-source-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.add-source-error {
+  font-size: 0.72rem;
+  color: var(--color-danger);
+}
+
+.add-source-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-add-cancel {
+  font-size: 0.72rem;
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-add-cancel:hover {
+  color: var(--color-text-secondary);
+  border-color: var(--color-text-muted);
+}
+
+.btn-add-confirm {
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 5px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent-border);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-add-confirm:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: white;
+}
+
+.btn-add-confirm:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ── AI Learning Section ── */
@@ -427,5 +646,29 @@ function timeAgo(timestamp) {
 .btn-clear-feedback:hover {
   border-color: var(--color-danger);
   color: var(--color-danger);
+}
+
+.btn-connect {
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 5px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent-border);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-connect:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: white;
+}
+
+.btn-connect:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 </style>

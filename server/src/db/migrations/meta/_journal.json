@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1771283138581,
+      "tag": "0000_unknown_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771297481635,
+      "tag": "0001_wise_risque",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771300083357,
+      "tag": "0002_lumpy_hellfire_club",
+      "breakpoints": true
+    }
+  ]
+}

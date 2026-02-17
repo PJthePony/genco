@@ -1,7 +1,10 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useFeedback } from '../composables/useFeedback'
+import { useQueue } from '../composables/useQueue'
+import { useDigest } from '../composables/useDigest'
+import { api } from '../composables/useApi'
 import AppHeader from '../components/AppHeader.vue'
 import DecisionCard from '../components/DecisionCard.vue'
 import DailyDigest from '../components/DailyDigest.vue'
@@ -11,6 +14,8 @@ import ToastNotification from '../components/ToastNotification.vue'
 
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
+const { items: cards, loading, scanning, error, remaining, urgentCount, allCleared, fetchQueue, scanInbox, executeAction } = useQueue()
+const { items: digestItems, fetchDigest } = useDigest()
 
 // ── Toast ──
 const toastMessage = ref('')
@@ -28,113 +33,151 @@ function showToast(message) {
 const settingsOpen = ref(false)
 
 // ── Briefing Sources ──
-const briefingSources = ref([
-  { name: 'Patagonia', tag: 'Sale', tagClass: 'tag-sale' },
-  { name: 'Huckberry', tag: 'Sale', tagClass: 'tag-sale' },
-  { name: 'Philly Inquirer', tag: 'News', tagClass: 'tag-news' },
-  { name: 'Morning Brew', tag: 'Update', tagClass: 'tag-update' },
-])
+const briefingSources = ref([])
 
-function removeBriefingSource(index) {
-  const name = briefingSources.value[index].name
-  briefingSources.value.splice(index, 1)
-  showToast(`${name} removed from briefing`)
+async function loadBriefingSources() {
+  try {
+    const data = await api('/settings/briefing-sources')
+    briefingSources.value = (data.sources || []).map(s => ({
+      id: s.id,
+      name: s.displayName,
+      tag: s.tag || 'Update',
+      tagClass: s.tag ? `tag-${s.tag.toLowerCase()}` : 'tag-update',
+    }))
+  } catch (err) {
+    console.error('Failed to load briefing sources:', err)
+  }
+}
+
+async function removeBriefingSource(index) {
+  const source = briefingSources.value[index]
+  try {
+    await api(`/settings/briefing-sources/${source.id}`, { method: 'DELETE' })
+    briefingSources.value.splice(index, 1)
+    showToast(`${source.name} removed from briefing`)
+  } catch (err) {
+    showToast('Failed to remove source')
+  }
 }
 
 // ── Email Modal ──
 const emailModalOpen = ref(false)
 const activeEmail = ref(null)
 
-const emails = {
-  'email-1': {
-    subject: 'Re: Q3 Partnership Proposal',
-    from: 'Sarah Chen <sarah@acmecorp.com>',
-    to: 'pjtanzillo@gmail.com',
-    date: 'Feb 16, 2025 at 7:14 AM',
-    body: '<p>Hi PJ,</p><p>Thanks for the great conversation last week. I\'ve run the numbers by our team and everyone\'s excited about the partnership opportunity.</p><p>Would you have time next week to hop on a call and discuss the terms in more detail? I\'m flexible on timing but ideally before Friday so we can get the ball rolling for Q3.</p><p>Let me know what works!</p><p class="sig">Sarah Chen<br>VP Partnerships, Acme Corp</p>'
-  },
-  'email-2': {
-    subject: 'You appeared in 12 searches this week',
-    from: 'LinkedIn <notifications@linkedin.com>',
-    to: 'pjtanzillo@gmail.com',
-    date: 'Feb 16, 2025 at 4:00 AM',
-    body: '<p>Your profile was found in 12 searches this week. See who\'s looking for you.</p><p>Top searchers work at companies in Technology and Finance.</p><p class="sig">LinkedIn Notifications</p>'
-  },
-  'email-3': {
-    subject: 'Brand assets for the new site',
-    from: 'Mike Reynolds <mike@reynoldsdesign.co>',
-    to: 'pjtanzillo@gmail.com',
-    date: 'Feb 15, 2025 at 3:22 PM',
-    body: '<p>Hey PJ,</p><p>Final assets are attached. Here\'s what\'s included:</p><p>- Primary logo (SVG, PNG @2x)<br>- Brand guidelines PDF<br>- Color palette with hex codes<br>- Typography specimens</p><p>The one thing I\'d love your input on is the color palette. I went with the warmer direction we discussed but want to make sure the orange accent feels right before we lock it in.</p><p>No rush, but if you could take a look by end of week that\'d be great.</p><p class="sig">Mike Reynolds<br>Reynolds Design Co.</p>'
-  },
-  'email-4': {
-    subject: "This week's dead startups",
-    from: 'SaaS Graveyard <digest@saasgraveyard.com>',
-    to: 'pjtanzillo@gmail.com',
-    date: 'Feb 15, 2025 at 10:00 AM',
-    body: '<p>This week in the graveyard: 3 more B2B SaaS companies shut their doors.</p><p>Read the full post-mortems and lessons learned from founders who shared what went wrong.</p><p class="sig">SaaS Graveyard Weekly Digest<br>Unsubscribe</p>'
-  },
-  'email-5': {
-    subject: 'Following up: intro to the Meridian team',
-    from: 'James Mitchell <james@vertexcap.com>',
-    to: 'pjtanzillo@gmail.com, founders@meridian.io',
-    date: 'Feb 13, 2025 at 11:45 AM',
-    body: '<p>Hey PJ & Meridian team,</p><p>Just bumping this up in case it got buried. I think there\'s a really natural fit here and would love to see you two connect.</p><p>PJ - the Meridian folks are building something in the productivity space that I think overlaps nicely with what you\'re doing. Worth a 30-min chat at minimum.</p><p>Happy to hop on the first call too if that helps.</p><p class="sig">James Mitchell<br>Partner, Vertex Capital</p>'
-  },
-  'email-6': {
-    subject: '[tessio] PR #47 merged: Fix drag-drop reorder',
-    from: 'GitHub <notifications@github.com>',
-    to: 'pjtanzillo@gmail.com',
-    date: 'Feb 16, 2025 at 3:12 AM',
-    body: '<p>PJthePony merged pull request #47 into main.</p><p><strong>Fix drag-drop reorder</strong></p><p>Fixed an issue where dragging tasks between columns would sometimes lose the task order. Updated the vuedraggable handler to preserve index on drop.</p><p>All checks passed. 2 files changed, 14 insertions, 3 deletions.</p>'
-  }
-}
-
 function openEmail(emailId) {
-  activeEmail.value = emails[emailId]
-  emailModalOpen.value = true
+  const card = cards.value.find(c => c.id === emailId)
+  if (card) {
+    activeEmail.value = {
+      subject: card.subject,
+      from: card.fromName ? `${card.fromName} <${card.fromEmail}>` : card.fromEmail,
+      to: 'pjtanzillo@gmail.com',
+      date: new Date(card.receivedAt).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+      }),
+      body: card.bodyHtml || '<p>(No content)</p>',
+    }
+    emailModalOpen.value = true
+  }
 }
 
 function closeEmail() {
   emailModalOpen.value = false
 }
 
-// ── Decision Cards ──
-const cards = ref([
-  { id: 'card-1', emailId: 'email-1', sender: 'Sarah Chen', org: 'Acme Corp', initials: 'SC', avatarClass: 'av-orange', time: '2 hours ago', priority: 'p-high', subject: 'Re: Q3 Partnership Proposal', summary: 'Asking for your availability next week to discuss terms. Needs a response by Friday.', action: 'Reply', actionMsg: 'Reply draft created', cleared: false },
-  { id: 'card-2', emailId: 'email-2', sender: 'LinkedIn', org: 'Notification', initials: 'LI', avatarClass: 'av-blue', time: '5 hours ago', priority: 'p-low', subject: 'You appeared in 12 searches this week', summary: 'Weekly search appearance digest. No action needed.', action: 'Archive', actionMsg: 'Archived', cleared: false, hasBriefing: true },
-  { id: 'card-3', emailId: 'email-3', sender: 'Mike Reynolds', org: 'Reynolds Design', initials: 'MR', avatarClass: 'av-purple', time: 'Yesterday', priority: 'p-med', subject: 'Brand assets for the new site', summary: 'Sent final logo files and brand guidelines. Wants your feedback on the color palette before they finalize.', action: '+ Task', actionMsg: 'Task added to Tessio', cleared: false },
-  { id: 'card-4', emailId: 'email-4', sender: 'SaaS Graveyard', org: 'Newsletter', initials: 'SG', avatarClass: 'av-red', time: 'Yesterday', priority: 'p-low', subject: "This week's dead startups", summary: "Weekly newsletter. You haven't opened the last 8 emails from this sender.", action: 'Unsubscribe', actionMsg: 'Unsubscribed & archived', cleared: false, hasBriefing: true },
-  { id: 'card-5', emailId: 'email-5', sender: 'James Mitchell', org: 'Vertex Capital', initials: 'JM', avatarClass: 'av-green', time: '3 days ago', priority: 'p-high', subject: 'Following up: intro to the Meridian team', summary: "Introduced you to Meridian founders 5 days ago. Neither side responded. James is probably wondering if you saw it.", action: 'Reply', actionMsg: 'Reply draft created', cleared: false },
-  { id: 'card-6', emailId: 'email-6', sender: 'GitHub', org: 'Notification', initials: 'GH', avatarClass: 'av-blue', time: '6 hours ago', priority: 'p-low', subject: '[tessio] PR #47 merged: Fix drag-drop reorder', summary: 'Your pull request was merged into main. CI passed. No action needed.', action: 'Archive', actionMsg: 'Archived', cleared: false, hasBriefing: true },
-])
-
-const remaining = computed(() => cards.value.filter(c => !c.cleared).length)
-const allCleared = computed(() => remaining.value === 0)
-
-function approveCard(cardId, message) {
+// ── Decision Card Actions ──
+async function approveCard(cardId, message) {
   const card = cards.value.find(c => c.id === cardId)
-  if (card) card.cleared = true
-  showToast(message)
+  if (!card) return
+
+  try {
+    const result = await executeAction(cardId, card.actionKey, {
+      replyBody: card.replyDraft,
+      replyContext: card.replyContext || undefined,
+      taskTitle: card.taskTitle,
+    })
+    card.cleared = true
+
+    // Handle unsubscribe result — show appropriate message
+    if (result.unsubscribeMethod === 'one-click') {
+      showToast('Unsubscribed (one-click)')
+    } else if (result.unsubscribeMethod === 'mailto') {
+      showToast('Unsubscribe email sent')
+    } else if (result.unsubscribeMethod === 'url' && result.unsubscribeUrl) {
+      showToast('Archived — open link to finish unsubscribing')
+      // Open the unsub URL in a new tab for the user
+      window.open(result.unsubscribeUrl, '_blank', 'noopener')
+    } else {
+      showToast(message)
+    }
+  } catch (err) {
+    showToast('Action failed — try again')
+  }
 }
 
-function skipCard(cardId) {
-  const card = cards.value.find(c => c.id === cardId)
-  if (card) card.cleared = true
-  showToast('Skipped')
+async function skipCard(cardId) {
+  try {
+    await executeAction(cardId, 'skip')
+    const card = cards.value.find(c => c.id === cardId)
+    if (card) card.cleared = true
+    showToast('Skipped')
+  } catch (err) {
+    showToast('Skip failed')
+  }
 }
 
-function handleFeedback(entry) {
+async function handleFeedback(entry) {
+  // Save feedback to backend
+  try {
+    await api('/feedback', {
+      method: 'POST',
+      body: JSON.stringify({
+        emailQueueId: entry.cardId,
+        sender: entry.sender,
+        originalAction: entry.originalAction,
+        chosenAction: entry.chosenAction,
+        reason: entry.reason,
+      }),
+    })
+  } catch (err) {
+    console.error('Failed to save feedback:', err)
+  }
+
+  // Map the chosen display label back to the backend action key
+  // and update the card so approveCard sends the correct action
+  const ACTION_KEY_MAP = {
+    'Reply': 'reply',
+    '+ Task': 'add_task',
+    'Archive': 'archive',
+    'Unsubscribe': 'unsubscribe',
+    '+ Briefing': 'briefing',
+    'Act': 'act',
+  }
+
+  const card = cards.value.find(c => c.id === entry.cardId)
+  if (card) {
+    const newKey = ACTION_KEY_MAP[entry.chosenAction]
+    if (newKey) {
+      card.actionKey = newKey
+    }
+    if (entry.replyContext) {
+      card.replyContext = entry.replyContext
+    }
+  }
+
+  // Also update local state
   addFeedback(entry)
 }
 
-// ── Daily Digest ──
-const digestItems = ref([
-  { source: 'Patagonia', tag: 'Sale', tagClass: 'tag-sale', summary: 'End-of-season sale — 40% off winter gear. Nano Puff and Better Sweater included. Free shipping over $99. Ends Thursday.' },
-  { source: 'Philly Inquirer', tag: 'News', tagClass: 'tag-news', summary: 'SEPTA board approved new express line between Center City and University City. Construction starts fall 2025. Also: Eagles offseason roster moves.' },
-  { source: 'Huckberry', tag: 'Sale', tagClass: 'tag-sale', summary: 'New arrivals: spring jackets and camp collar shirts. Your size is in stock for the Flint and Tinder items you browsed last week.' },
-  { source: 'Morning Brew', tag: 'Update', tagClass: 'tag-update', summary: 'Fed holds rates steady. Nvidia earnings beat expectations by 12%. Apple rumored to announce AI partnership next month.' },
-])
+// ── Scan ──
+async function handleScan() {
+  try {
+    await scanInbox()
+    await fetchDigest()
+    showToast('Inbox scanned')
+  } catch (err) {
+    showToast('Scan failed — check Gmail connection')
+  }
+}
 
 // ── Date ──
 const today = new Date()
@@ -143,23 +186,104 @@ const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', month: 'lon
 function handleLogout() {
   signOut()
 }
+
+// ── Pull-to-refresh ──
+const pullDistance = ref(0)
+const pulling = ref(false)
+const refreshing = ref(false)
+let startY = 0
+
+function onTouchStart(e) {
+  if (window.scrollY === 0 && !refreshing.value && !scanning.value) {
+    startY = e.touches[0].clientY
+    pulling.value = true
+  }
+}
+
+function onTouchMove(e) {
+  if (!pulling.value) return
+  const diff = e.touches[0].clientY - startY
+  if (diff > 0) {
+    pullDistance.value = Math.min(diff * 0.4, 80)
+  }
+}
+
+async function onTouchEnd() {
+  if (!pulling.value) return
+  pulling.value = false
+
+  if (pullDistance.value > 50) {
+    refreshing.value = true
+    pullDistance.value = 40 // hold at spinner position
+    try {
+      await handleScan()
+    } finally {
+      refreshing.value = false
+      pullDistance.value = 0
+    }
+  } else {
+    pullDistance.value = 0
+  }
+}
+
+// ── Init ──
+onMounted(async () => {
+  document.addEventListener('touchstart', onTouchStart, { passive: true })
+  document.addEventListener('touchmove', onTouchMove, { passive: true })
+  document.addEventListener('touchend', onTouchEnd)
+
+  await fetchQueue()
+  await fetchDigest()
+  loadBriefingSources()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('touchstart', onTouchStart)
+  document.removeEventListener('touchmove', onTouchMove)
+  document.removeEventListener('touchend', onTouchEnd)
+})
 </script>
 
 <template>
   <div class="app-container">
+    <!-- Pull-to-refresh indicator -->
+    <div class="pull-indicator" :style="{ transform: `translateY(${pullDistance}px)`, opacity: pullDistance > 10 ? 1 : 0 }">
+      <span class="pull-spinner" :class="{ active: refreshing }"></span>
+      <span class="pull-text">{{ refreshing ? 'Refreshing…' : 'Pull to refresh' }}</span>
+    </div>
+
     <AppHeader @open-settings="settingsOpen = true" @logout="handleLogout" />
 
-    <div class="app-body">
+    <div class="app-body" :style="{ transform: `translateY(${pullDistance}px)` }"  >
       <div class="briefing-header">
         <div class="briefing-date">{{ dateStr }}</div>
         <h1 class="briefing-title">Morning Briefing</h1>
         <div class="briefing-stats">
           <div class="briefing-stat"><strong>{{ remaining }}</strong> to review</div>
-          <div class="briefing-stat urgent"><strong>1</strong> urgent</div>
+          <div v-if="urgentCount > 0" class="briefing-stat urgent"><strong>{{ urgentCount }}</strong> urgent</div>
         </div>
       </div>
 
+      <!-- Scan button -->
+      <button class="btn-scan" :class="{ scanning }" @click="handleScan" :disabled="scanning">
+        <svg v-if="!scanning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <span v-if="scanning" class="scan-spinner"></span>
+        {{ scanning ? 'Scanning…' : 'Scan inbox' }}
+      </button>
+
+      <!-- Loading state -->
+      <div v-if="loading && cards.length === 0" class="loading-state">
+        <p>Loading your queue…</p>
+      </div>
+
+      <!-- Error state -->
+      <div v-if="error && cards.length === 0" class="error-state">
+        <p>{{ error }}</p>
+        <button class="btn-retry" @click="fetchQueue">Retry</button>
+      </div>
+
       <DailyDigest
+        v-if="digestItems.length > 0"
         :items="digestItems"
         @manage-sources="settingsOpen = true"
       />
@@ -180,6 +304,11 @@ function handleLogout() {
         <h2>All clear, Don.</h2>
         <p>You've handled everything. Check Gmail drafts when you're ready.</p>
       </div>
+
+      <div v-if="!loading && cards.length === 0 && !allCleared" class="empty-state visible">
+        <h2>Nothing here yet.</h2>
+        <p>Hit "Scan inbox" to pull in your unread emails.</p>
+      </div>
     </div>
 
     <EmailModal
@@ -196,6 +325,7 @@ function handleLogout() {
       :total-overrides="totalOverrides"
       @close="settingsOpen = false"
       @remove-source="removeBriefingSource"
+      @add-source="loadBriefingSources"
       @clear-feedback="clearFeedback"
     />
 
@@ -257,6 +387,71 @@ function handleLogout() {
   color: var(--color-accent);
 }
 
+.btn-scan {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: 20px;
+}
+
+.btn-scan:hover:not(:disabled) {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+}
+
+.btn-scan:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-scan.scanning {
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+}
+
+.scan-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-accent-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.btn-retry {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -278,6 +473,44 @@ function handleLogout() {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Pull-to-refresh ── */
+.pull-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  z-index: 100;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.pull-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+}
+
+.pull-spinner.active {
+  animation: spin 0.6s linear infinite;
+}
+
+.pull-text {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.app-body {
+  transition: transform 0.1s ease-out;
 }
 
 @media (min-width: 641px) {

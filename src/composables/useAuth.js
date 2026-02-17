@@ -63,22 +63,30 @@ export function useAuth() {
         loading.value = false
 
         if (event === 'SIGNED_IN' && newSession && !sessionStorage.getItem('luca_synced')) {
-          // First sign-in: redirect through Luca to set the shared cookie
           sessionStorage.setItem('luca_synced', '1')
-          syncSessionCookie(newSession, true)
+          if (!import.meta.env.DEV) {
+            // Production: redirect through Luca to set the shared .tanzillo.ai cookie
+            syncSessionCookie(newSession, true)
+          }
         } else if (event === 'TOKEN_REFRESHED' && newSession) {
-          // Silently update the cookie
-          syncSessionCookie(newSession, false)
+          if (!import.meta.env.DEV) {
+            // Production: silently update the cookie
+            syncSessionCookie(newSession, false)
+          }
         }
       })
     })
   }
 
   const signIn = async (email) => {
+    const redirectTo = import.meta.env.DEV
+      ? 'http://localhost:5173'
+      : 'https://genco.tanzillo.ai'
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: 'https://genco.tanzillo.ai'
+        emailRedirectTo: redirectTo
       }
     })
     if (error) throw error
