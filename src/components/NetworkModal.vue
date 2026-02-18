@@ -15,6 +15,8 @@ const {
   loading,
   seeding,
   seedProgress,
+  seedHasMore,
+  seedTotalScanned,
   fetchContacts,
   addContact,
   removeContact,
@@ -107,12 +109,16 @@ async function handleRemove(id) {
 }
 
 // Seed flow
-async function handleSeed() {
+async function handleSeed({ resume = false } = {}) {
   activeTab.value = 'seed'
-  selectedSuggestions.value = new Set()
-  await seedContacts()
-  // Pre-select all
-  suggestions.value.forEach((s, i) => selectedSuggestions.value.add(i))
+  if (!resume) {
+    selectedSuggestions.value = new Set()
+  }
+  await seedContacts({ resume })
+  // Pre-select all new suggestions
+  if (!resume) {
+    suggestions.value.forEach((s, i) => selectedSuggestions.value.add(i))
+  }
 }
 
 function toggleSuggestion(index) {
@@ -420,10 +426,11 @@ async function submitFact() {
             </div>
 
             <div class="seed-rescan">
-              <button class="btn-seed" @click="handleSeed" :disabled="seeding">
+              <button class="btn-seed" @click="handleSeed({ resume: true })" :disabled="seeding">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                Rescan Gmail
+                {{ seedHasMore ? 'Scan more emails' : 'Rescan Gmail' }}
               </button>
+              <span v-if="seedTotalScanned > 0" class="seed-scanned-count">{{ seedTotalScanned.toLocaleString() }} emails scanned</span>
             </div>
           </div>
         </div>
@@ -993,4 +1000,15 @@ async function submitFact() {
 
 .btn-add-single:hover:not(:disabled) { background: var(--color-accent); color: #fff; }
 .btn-add-single:disabled { opacity: 0.5; cursor: default; }
+
+.seed-scanned-count {
+  font-size: 0.62rem;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.seed-rescan {
+  flex-direction: column;
+  align-items: center;
+}
 </style>

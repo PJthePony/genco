@@ -333,6 +333,7 @@ const SEED_LIMIT = 5000;
 
 networkRoutes.post("/seed", async (c) => {
   const user = c.get("user");
+  const rawBody = await c.req.json().catch(() => ({})) as { resumeToken?: string };
 
   // Get Gmail tokens
   const connection = await db.query.gmailConnections.findFirst({
@@ -386,10 +387,10 @@ networkRoutes.post("/seed", async (c) => {
           string,
           { email: string; name: string; count: number }
         >();
-        let pageToken: string | undefined;
+        let pageToken: string | undefined = rawBody.resumeToken || undefined;
         let totalFetched = 0;
 
-        send("progress", { fetched: 0, limit: SEED_LIMIT, phase: "Scanning sent mail..." });
+        send("progress", { fetched: 0, limit: SEED_LIMIT, phase: pageToken ? "Resuming scan..." : "Scanning sent mail..." });
 
         while (totalFetched < SEED_LIMIT) {
           const listRes: any = await gmail.users.messages.list({
@@ -476,10 +477,10 @@ networkRoutes.post("/seed", async (c) => {
           phase: "Preparing results...",
         });
 
-        // Sort by frequency, take top 30
+        // Sort by frequency, take top 50
         const sorted = [...recipientCounts.values()]
           .sort((a, b) => b.count - a.count)
-          .slice(0, 30);
+          .slice(0, 50);
 
         // Exclude already-added contacts
         const existingContacts = await db.query.networkContacts.findMany({
@@ -505,7 +506,7 @@ networkRoutes.post("/seed", async (c) => {
             senderSummary: summaryMap.get(r.email) ?? null,
           }));
 
-        send("done", { suggestions, totalScanned: totalFetched });
+        send("done", { suggestions, totalScanned: totalFetched, resumeToken: pageToken ?? null, hasMore: !!pageToken });
       } catch (err: any) {
         send("error", { message: err.message ?? "Seed failed" });
       } finally {

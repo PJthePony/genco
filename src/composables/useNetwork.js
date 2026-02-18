@@ -12,6 +12,9 @@ const suggestions = ref([])
 const loading = ref(false)
 const seeding = ref(false)
 const seedProgress = ref({ fetched: 0, limit: 5000, contacts: 0, phase: '' })
+const seedResumeToken = ref(null)
+const seedHasMore = ref(false)
+const seedTotalScanned = ref(0)
 
 const REASON_LABELS = {
   ball_in_your_court: 'Ball in your court',
@@ -145,10 +148,23 @@ export function useNetwork() {
     }
   }
 
-  async function seedContacts() {
+  async function seedContacts({ resume = false } = {}) {
     seeding.value = true
-    seedProgress.value = { fetched: 0, limit: 5000, contacts: 0, phase: 'Starting...' }
-    suggestions.value = []
+    const isResume = resume && seedResumeToken.value
+    seedProgress.value = {
+      fetched: 0,
+      limit: 5000,
+      contacts: 0,
+      phase: isResume ? 'Resuming scan...' : 'Starting...',
+    }
+    // Only clear suggestions on fresh scan
+    if (!isResume) {
+      suggestions.value = []
+      seedResumeToken.value = null
+      seedHasMore.value = false
+      seedTotalScanned.value = 0
+    }
+    const previousSuggestions = isResume ? [...suggestions.value] : []
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -161,6 +177,7 @@ export function useNetwork() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        body: JSON.stringify(isResume ? { resumeToken: seedResumeToken.value } : {}),
       })
 
       if (!res.ok) {
@@ -187,9 +204,30 @@ export function useNetwork() {
           } else if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6))
             if (eventType === 'progress') {
+              // Show cumulative progress when resuming
+              if (isResume) {
+                data.fetched += seedTotalScanned.value
+                data.phase = `Scanned ${data.fetched.toLocaleString()} sent emails (continued)...`
+              }
               seedProgress.value = data
             } else if (eventType === 'done') {
-              suggestions.value = data.suggestions || []
+              // Merge with previous suggestions on resume
+              const newSuggestions = data.suggestions || []
+              if (isResume) {
+                const existingEmails = new Set(previousSuggestions.map(s => s.email))
+                const merged = [...previousSuggestions]
+                for (const s of newSuggestions) {
+                  if (!existingEmails.has(s.email)) {
+                    merged.push(s)
+                  }
+                }
+                suggestions.value = merged
+              } else {
+                suggestions.value = newSuggestions
+              }
+              seedResumeToken.value = data.resumeToken || null
+              seedHasMore.value = data.hasMore || false
+              seedTotalScanned.value += data.totalScanned || 0
             } else if (eventType === 'error') {
               throw new Error(data.message)
             }
@@ -251,6 +289,8 @@ export function useNetwork() {
     loading,
     seeding,
     seedProgress,
+    seedHasMore,
+    seedTotalScanned,
     followUpCount,
     fetchContacts,
     fetchFollowUps,
