@@ -1,12 +1,14 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import FollowUpCard from './FollowUpCard.vue'
 
 const props = defineProps({
   items: Array,
+  scanning: Boolean,
+  scanProgress: Object,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'manage-network'])
+const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft', 'manage-network', 'scan-threads'])
 
 const expanded = ref(true)
 
@@ -23,6 +25,10 @@ function handleDismiss(id) {
 function handleDraft(id) {
   emit('draft', id)
 }
+
+function handleSaveDraft(id, body) {
+  emit('save-draft', id, body)
+}
 </script>
 
 <template>
@@ -34,7 +40,7 @@ function handleDraft(id) {
         </div>
         <div>
           <div class="section-label">Follow Up</div>
-          <div class="section-sublabel">Proactive outreach</div>
+          <div class="section-sublabel">Threads needing attention</div>
         </div>
       </div>
       <div class="section-header-right">
@@ -44,7 +50,14 @@ function handleDraft(id) {
     </div>
 
     <div v-if="expanded" class="section-body">
-      <template v-if="items.length > 0">
+      <!-- Scan progress -->
+      <div v-if="scanning" class="scan-progress">
+        <span class="scan-spinner"></span>
+        <span class="scan-phase">{{ scanProgress?.phase || 'Scanning...' }}</span>
+        <span v-if="scanProgress?.found" class="scan-found">{{ scanProgress.found }} found</span>
+      </div>
+
+      <template v-else-if="items.length > 0">
         <FollowUpCard
           v-for="card in items"
           :key="card.id"
@@ -52,14 +65,23 @@ function handleDraft(id) {
           @draft="handleDraft"
           @snooze="handleSnooze"
           @dismiss="handleDismiss"
+          @save-draft="handleSaveDraft"
           @act="$emit('act', $event)"
         />
       </template>
       <div v-else class="empty-state">
-        <p>Add contacts to your network and Genco will surface follow-up opportunities here.</p>
+        <p>Scan your Gmail threads to find conversations that need attention.</p>
+        <button class="btn-scan" @click.stop="$emit('scan-threads')" :disabled="scanning">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Scan threads
+        </button>
       </div>
 
       <div class="section-footer">
+        <button class="btn-manage" @click.stop="$emit('scan-threads')" :disabled="scanning">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          {{ scanning ? 'Scanning...' : 'Scan threads' }}
+        </button>
         <button class="btn-manage" @click.stop="$emit('manage-network')">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           Manage network
@@ -195,6 +217,58 @@ function handleDraft(id) {
   font-size: 0.72rem;
   color: var(--color-text-muted);
   line-height: 1.5;
-  margin: 0;
+  margin: 0 0 12px;
+}
+
+.btn-scan {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 18px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.btn-scan:hover:not(:disabled) { background: var(--color-primary-hover); }
+.btn-scan:disabled { opacity: 0.5; cursor: default; }
+
+.scan-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 4px;
+}
+
+.scan-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.scan-phase {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.scan-found {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-success);
+  margin-left: auto;
 }
 </style>

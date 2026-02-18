@@ -1,10 +1,12 @@
-import { eq, and, lt, isNotNull } from "drizzle-orm";
+import { eq, and, lt, or, lte, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   gmailConnections,
   emailQueue,
   briefingSources,
   networkContacts,
+  followUpQueue,
+  contactContext,
 } from "../db/schema.js";
 import {
   fetchInboxEmails,
@@ -279,5 +281,138 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
     `Scan complete for ${connection.gmailAddress}: ${emails.length} fetched, ${inserted} pending, ${historical} historical, ${skipped} skipped, ${autoArchived} auto-archived, ${alreadyReplied} already replied`,
   );
 
+  // Run lightweight follow-up detection after each scan
+  try {
+    const followUpsCreated = await detectFollowUps(userId);
+    if (followUpsCreated > 0) {
+      console.log(`Follow-up detection: created ${followUpsCreated} new follow-ups for ${connection.gmailAddress}`);
+    }
+  } catch (err) {
+    console.warn("Follow-up detection failed (non-fatal):", err);
+  }
+
   return { fetched: emails.length, inserted, historical, skipped, autoArchived, alreadyReplied };
+}
+
+/**
+ * Detect follow-up opportunities from network contacts.
+ *
+ * Pure SQL — no Gmail API calls. Runs after each inbox scan to check:
+ * 1. ball_in_your_court: contact's thread awaiting your reply for 2+ days
+ * 2. went_cold: no activity for 14+ days (and not marked conversation_ended)
+ * 3. date_coming_up: personal facts with dateRelevant in the next 7 days
+ *
+ * Skips contacts that already have a pending/snoozed follow-up for the same reason.
+ */
+async function detectFollowUps(userId: string): Promise<number> {
+  const now = Date.now();
+  const twoDaysAgo = new Date(now - 2 * 24 * 60 * 60 * 1000);
+  const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
+  const sevenDaysFromNow = new Date(now + 7 * 24 * 60 * 60 * 1000);
+
+  // Load all network contacts for this user
+  const contacts = await db.query.networkContacts.findMany({
+    where: eq(networkContacts.userId, userId),
+  });
+
+  if (contacts.length === 0) return 0;
+
+  // Load existing pending/snoozed follow-ups to avoid duplicates
+  const contactIds = contacts.map((c) => c.id);
+  const existingFollowUps = await db.query.followUpQueue.findMany({
+    where: and(
+      sql`${followUpQueue.networkContactId} IN (${sql.join(
+        contactIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})`,
+      or(
+        eq(followUpQueue.status, "pending"),
+        eq(followUpQueue.status, "snoozed"),
+      ),
+    ),
+  });
+  const existingKeys = new Set(
+    existingFollowUps.map((fu) => `${fu.networkContactId}:${fu.reason}`),
+  );
+
+  let created = 0;
+
+  for (const contact of contacts) {
+    // Skip contacts with conversation_ended status
+    if (contact.threadStatus === "conversation_ended") continue;
+    if (!contact.lastContactAt) continue;
+
+    const lastContactTime = contact.lastContactAt.getTime();
+
+    // 1. Ball in your court: awaiting_your_reply AND last contact > 2 days ago
+    if (
+      contact.threadStatus === "awaiting_your_reply" &&
+      contact.lastContactAt < twoDaysAgo
+    ) {
+      const key = `${contact.id}:ball_in_your_court`;
+      if (!existingKeys.has(key)) {
+        const daysAgo = Math.floor((now - lastContactTime) / (24 * 60 * 60 * 1000));
+        await db.insert(followUpQueue).values({
+          networkContactId: contact.id,
+          reason: "ball_in_your_court",
+          suggestedAction: "reply",
+          contextSnapshot: `${contact.displayName} emailed you ${daysAgo}d ago: "${contact.lastSubject || "(no subject)"}"`,
+        });
+        existingKeys.add(key);
+        created++;
+      }
+    }
+
+    // 2. Went cold: last contact > 14 days ago, any direction
+    if (contact.lastContactAt < fourteenDaysAgo) {
+      const key = `${contact.id}:went_cold`;
+      if (!existingKeys.has(key)) {
+        const daysAgo = Math.floor((now - lastContactTime) / (24 * 60 * 60 * 1000));
+        await db.insert(followUpQueue).values({
+          networkContactId: contact.id,
+          reason: "went_cold",
+          suggestedAction: "nudge",
+          contextSnapshot: `Last heard from ${contact.displayName} ${daysAgo}d ago: "${contact.lastSubject || "(no subject)"}"`,
+        });
+        existingKeys.add(key);
+        created++;
+      }
+    }
+  }
+
+  // 3. Date coming up: personal facts with upcoming dates (next 7 days)
+  const upcomingFacts = await db.query.contactContext.findMany({
+    where: and(
+      eq(contactContext.expired, false),
+      lte(contactContext.dateRelevant, sevenDaysFromNow),
+    ),
+  });
+
+  // Filter to only contacts belonging to this user
+  const userContactIds = new Set(contactIds);
+
+  for (const fact of upcomingFacts) {
+    if (!fact.dateRelevant || fact.dateRelevant.getTime() < now) continue;
+    if (!userContactIds.has(fact.networkContactId)) continue;
+
+    const key = `${fact.networkContactId}:date_coming_up`;
+    if (existingKeys.has(key)) continue;
+
+    const factContact = contacts.find((c) => c.id === fact.networkContactId);
+    if (!factContact) continue;
+
+    const daysUntil = Math.ceil(
+      (fact.dateRelevant.getTime() - now) / (24 * 60 * 60 * 1000),
+    );
+    await db.insert(followUpQueue).values({
+      networkContactId: fact.networkContactId,
+      reason: "date_coming_up",
+      suggestedAction: "nudge",
+      contextSnapshot: `${factContact.displayName}: ${fact.fact} (in ${daysUntil} day${daysUntil === 1 ? "" : "s"})`,
+    });
+    existingKeys.add(key);
+    created++;
+  }
+
+  return created;
 }

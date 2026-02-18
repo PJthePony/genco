@@ -19,7 +19,7 @@ const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, allCleared, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
 const { items: digestItems, fetchDigest } = useDigest()
-const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft } = useNetwork()
+const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, scanThreads, scanningThreads, scanProgress } = useNetwork()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
@@ -91,6 +91,24 @@ async function handleFollowUpDraft(id) {
     await generateDraft(id)
   } catch (err) {
     showToast('Draft generation failed')
+  }
+}
+
+async function handleScanThreads() {
+  try {
+    await scanThreads()
+    showToast('Thread scan complete')
+  } catch (err) {
+    showToast('Thread scan failed')
+  }
+}
+
+async function handleSaveDraft(id, body) {
+  try {
+    await saveDraftToGmail(id, body)
+    showToast('Draft saved to Gmail')
+  } catch (err) {
+    showToast('Failed to save draft')
   }
 }
 
@@ -451,9 +469,13 @@ onUnmounted(() => {
       <!-- Follow Up (proactive outreach) -->
       <FollowUpSection
         :items="followUps"
+        :scanning="scanningThreads"
+        :scan-progress="scanProgress"
         @draft="handleFollowUpDraft"
         @snooze="handleFollowUpSnooze"
         @dismiss="handleFollowUpDismiss"
+        @save-draft="handleSaveDraft"
+        @scan-threads="handleScanThreads"
         @manage-network="networkModalOpen = true"
       />
     </div>

@@ -5,11 +5,18 @@ const props = defineProps({
   card: Object,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act'])
+const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft'])
 
 const showSnoozeOptions = ref(false)
 const draftText = ref('')
 const editingDraft = ref(false)
+const savingDraft = ref(false)
+
+function handleSaveDraft() {
+  if (!draftText.value.trim()) return
+  savingDraft.value = true
+  emit('save-draft', props.card.id, draftText.value.trim())
+}
 
 function handleDraft() {
   if (props.card.aiDraft) {
@@ -48,6 +55,7 @@ defineExpose({ onDraftReady })
             {{ card.daysAgo === 0 ? 'Today' : card.daysAgo === 1 ? 'Yesterday' : `${card.daysAgo}d ago` }}
             <span v-if="card.lastDirection"> &middot; {{ card.lastDirection === 'sent' ? 'you sent last' : 'they sent last' }}</span>
           </span>
+          <span v-if="card.lastSubject" class="meta-subject">&middot; {{ card.lastSubject }}</span>
         </div>
       </div>
       <span class="reason-tag" :class="card.reason">{{ card.reasonLabel }}</span>
@@ -69,11 +77,11 @@ defineExpose({ onDraftReady })
           placeholder="Your follow-up message..."
         ></textarea>
         <div class="draft-actions">
-          <button class="btn-draft-save" @click="editingDraft = false">
+          <button class="btn-draft-save" @click="handleSaveDraft" :disabled="savingDraft || !draftText.trim()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-            Save to Drafts
+            {{ savingDraft ? 'Saving...' : 'Save to Gmail Drafts' }}
           </button>
-          <button class="btn-draft-cancel" @click="editingDraft = false">Cancel</button>
+          <button class="btn-draft-cancel" @click="editingDraft = false" :disabled="savingDraft">Cancel</button>
         </div>
       </div>
     </div>
@@ -82,7 +90,7 @@ defineExpose({ onDraftReady })
     <div class="card-actions">
       <button class="btn-action btn-draft" @click="handleDraft" :disabled="card.drafting">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        {{ card.aiDraft ? 'View draft' : 'Draft reply' }}
+        {{ card.aiDraft ? 'View draft' : (card.suggestedAction === 'nudge' ? 'Draft nudge' : 'Draft reply') }}
       </button>
 
       <div class="snooze-wrapper">
@@ -164,6 +172,16 @@ defineExpose({ onDraftReady })
   font-size: 0.68rem;
   color: var(--color-text-muted);
   margin-top: 1px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.meta-subject {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .reason-tag {

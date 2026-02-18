@@ -15,6 +15,8 @@ const seedProgress = ref({ fetched: 0, limit: 5000, contacts: 0, phase: '' })
 const seedResumeToken = ref(null)
 const seedHasMore = ref(false)
 const seedTotalScanned = ref(0)
+const scanningThreads = ref(false)
+const scanProgress = ref({ fetched: 0, limit: 5000, found: 0, phase: '' })
 
 const REASON_LABELS = {
   ball_in_your_court: 'Ball in your court',
@@ -244,6 +246,86 @@ export function useNetwork() {
     }
   }
 
+  async function scanThreads() {
+    scanningThreads.value = true
+    scanProgress.value = { fetched: 0, limit: 5000, found: 0, phase: 'Starting thread scan...' }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+
+      const res = await fetch(`${API_URL}/network/scan-threads`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({}),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `API error ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let result = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        let eventType = ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7)
+          } else if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6))
+            if (eventType === 'progress') {
+              scanProgress.value = data
+            } else if (eventType === 'done') {
+              result = data
+            } else if (eventType === 'error') {
+              throw new Error(data.message)
+            }
+          }
+        }
+      }
+
+      // Refetch follow-ups to show newly found items
+      await fetchFollowUps()
+
+      return result
+    } catch (err) {
+      console.error('Failed to scan threads:', err)
+      throw err
+    } finally {
+      scanningThreads.value = false
+    }
+  }
+
+  async function saveDraftToGmail(followUpId, body) {
+    try {
+      const data = await api(`/network/follow-ups/${followUpId}/save-draft`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      })
+      // Remove from local state (it's been acted on)
+      followUps.value = followUps.value.filter(f => f.id !== followUpId)
+      return data
+    } catch (err) {
+      console.error('Failed to save draft to Gmail:', err)
+      throw err
+    }
+  }
+
   async function batchAddContacts(contactsList) {
     try {
       const data = await api('/network/batch', {
@@ -291,6 +373,8 @@ export function useNetwork() {
     seedProgress,
     seedHasMore,
     seedTotalScanned,
+    scanningThreads,
+    scanProgress,
     followUpCount,
     fetchContacts,
     fetchFollowUps,
@@ -299,6 +383,8 @@ export function useNetwork() {
     updateContact,
     actOnFollowUp,
     generateDraft,
+    saveDraftToGmail,
+    scanThreads,
     seedContacts,
     batchAddContacts,
     addFact,
