@@ -1,16 +1,30 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 const props = defineProps({
   card: Object,
+  expanded: Boolean,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft'])
+const emit = defineEmits(['expand', 'draft', 'snooze', 'dismiss', 'act', 'save-draft', 'send-imessage', 'open-email'])
 
 const showSnoozeOptions = ref(false)
 const draftText = ref('')
 const editingDraft = ref(false)
 const savingDraft = ref(false)
+const sendingMessage = ref(false)
+
+const hasPhone = computed(() => !!props.card.contactPhone)
+
+const gmailUrl = computed(() => {
+  if (!props.card.gmailThreadId) return null
+  return `https://mail.google.com/mail/u/0/#all/${props.card.gmailThreadId}`
+})
+
+function truncate(text, max) {
+  if (!text || text.length <= max) return text
+  return text.slice(0, max).trimEnd() + '...'
+}
 
 function handleSaveDraft() {
   if (!draftText.value.trim()) return
@@ -18,18 +32,21 @@ function handleSaveDraft() {
   emit('save-draft', props.card.id, draftText.value.trim())
 }
 
+function handleSendMessage() {
+  if (!draftText.value.trim()) return
+  sendingMessage.value = true
+  emit('send-imessage', props.card.id, draftText.value.trim())
+}
+
 function handleDraft() {
   if (props.card.aiDraft) {
-    // Already have a draft — toggle edit view
     draftText.value = props.card.aiDraft
     editingDraft.value = !editingDraft.value
   } else {
-    // Generate a new draft
     emit('draft', props.card.id)
   }
 }
 
-// Watch for draft arriving after generation
 function onDraftReady() {
   if (props.card.aiDraft && !editingDraft.value) {
     draftText.value = props.card.aiDraft
@@ -37,33 +54,46 @@ function onDraftReady() {
   }
 }
 
-// Use a simple reactive check
 defineExpose({ onDraftReady })
 </script>
 
 <template>
-  <div class="followup-card" :class="[`reason-${card.reason}`]">
-    <div class="card-header">
-      <div class="avatar" :class="card.avatarClass">{{ card.initials }}</div>
-      <div class="card-info">
-        <div class="card-name">
-          {{ card.contactName }}
-          <span v-if="card.company" class="card-company">{{ card.company }}</span>
-        </div>
-        <div class="card-meta">
-          <span v-if="card.daysAgo !== null" class="meta-text">
-            {{ card.daysAgo === 0 ? 'Today' : card.daysAgo === 1 ? 'Yesterday' : `${card.daysAgo}d ago` }}
-            <span v-if="card.lastDirection"> &middot; {{ card.lastDirection === 'sent' ? 'you sent last' : 'they sent last' }}</span>
-          </span>
-          <span v-if="card.lastSubject" class="meta-subject">&middot; {{ card.lastSubject }}</span>
-        </div>
+  <!-- Compact row (collapsed) -->
+  <div class="compact-row" :class="{ cleared: card.cleared }">
+    <div class="compact-avatar" :class="card.avatarClass">{{ card.initials }}</div>
+    <div class="compact-content" @click="$emit('expand')">
+      <div class="compact-top">
+        <span class="compact-sender">{{ card.contactName }}</span>
+        <span class="compact-time">
+          {{ card.daysAgo === 0 ? 'Today' : card.daysAgo === 1 ? '1d' : `${card.daysAgo}d` }}
+        </span>
       </div>
-      <span class="reason-tag" :class="card.reason">{{ card.reasonLabel }}</span>
+      <div class="compact-subject">{{ truncate(card.lastSubject || card.contextSnapshot, 60) }}</div>
+      <div class="compact-summary">{{ truncate(card.contextSnapshot, 80) }}</div>
+    </div>
+    <div class="compact-right">
+      <span class="compact-tag" :class="'tag-' + card.reason">{{ card.reasonLabel }}</span>
+      <button class="compact-approve" @click.stop="$emit('dismiss', card.id)" aria-label="Dismiss">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Expanded detail panel -->
+  <div v-if="expanded" class="expanded-panel">
+    <div class="expanded-meta">
+      <span v-if="card.lastDirection" class="meta-direction">
+        {{ card.lastDirection === 'sent' ? 'You sent last' : 'They sent last' }}
+      </span>
+      <a v-if="gmailUrl" :href="gmailUrl" target="_blank" rel="noopener" class="meta-link" @click.stop>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        View in Gmail
+      </a>
     </div>
 
-    <div class="card-context">{{ card.contextSnapshot }}</div>
+    <div class="expanded-context">{{ card.contextSnapshot }}</div>
 
-    <!-- Draft display -->
+    <!-- Draft section -->
     <div v-if="editingDraft || card.drafting" class="draft-section">
       <div v-if="card.drafting" class="draft-loading">
         <span class="draft-spinner"></span>
@@ -77,17 +107,21 @@ defineExpose({ onDraftReady })
           placeholder="Your follow-up message..."
         ></textarea>
         <div class="draft-actions">
-          <button class="btn-draft-save" @click="handleSaveDraft" :disabled="savingDraft || !draftText.trim()">
+          <button class="btn-draft-save" @click="handleSaveDraft" :disabled="savingDraft || sendingMessage || !draftText.trim()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
             {{ savingDraft ? 'Saving...' : 'Save to Gmail Drafts' }}
           </button>
-          <button class="btn-draft-cancel" @click="editingDraft = false" :disabled="savingDraft">Cancel</button>
+          <button v-if="hasPhone" class="btn-draft-imessage" @click="handleSendMessage" :disabled="savingDraft || sendingMessage || !draftText.trim()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            {{ sendingMessage ? 'Sending...' : 'Send as iMessage' }}
+          </button>
+          <button class="btn-draft-cancel" @click="editingDraft = false" :disabled="savingDraft || sendingMessage">Cancel</button>
         </div>
       </div>
     </div>
 
     <!-- Action row -->
-    <div class="card-actions">
+    <div class="expanded-actions">
       <button class="btn-action btn-draft" @click="handleDraft" :disabled="card.drafting">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         {{ card.aiDraft ? 'View draft' : (card.suggestedAction === 'nudge' ? 'Draft nudge' : 'Draft reply') }}
@@ -115,112 +149,186 @@ defineExpose({ onDraftReady })
 </template>
 
 <style scoped>
-.followup-card {
-  padding: 14px 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.followup-card:last-child {
-  border-bottom: none;
-}
-
-.card-header {
+/* ── Compact row (matches CompactRow.vue style) ── */
+.compact-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+.compact-row:last-child { border-bottom: none; }
+
+.compact-row.cleared {
+  opacity: 0;
+  max-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: transparent;
+}
+
+.compact-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 600;
   flex-shrink: 0;
-  color: #fff;
 }
 
-.avatar.av-orange { background: #f97316; }
-.avatar.av-blue { background: #3b82f6; }
-.avatar.av-purple { background: #8b5cf6; }
-.avatar.av-green { background: #059669; }
-.avatar.av-red { background: #ef4444; }
+.av-orange { background: var(--color-accent-soft); color: var(--color-accent); }
+.av-blue { background: var(--color-blue-soft); color: var(--color-blue); }
+.av-purple { background: var(--color-purple-soft); color: var(--color-purple); }
+.av-green { background: var(--color-success-soft); color: var(--color-success); }
+.av-red { background: rgba(239, 68, 68, 0.08); color: var(--color-danger); }
 
-.card-info {
+.compact-content {
   flex: 1;
   min-width: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.card-name {
-  font-size: 0.78rem;
+.compact-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.compact-sender {
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text);
-  letter-spacing: -0.01em;
-}
-
-.card-company {
-  font-weight: 400;
-  color: var(--color-text-muted);
-  margin-left: 4px;
-}
-
-.card-meta {
-  font-size: 0.68rem;
-  color: var(--color-text-muted);
-  margin-top: 1px;
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.meta-subject {
-  max-width: 200px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.reason-tag {
-  font-size: 0.58rem;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 100px;
-  letter-spacing: 0.02em;
+.compact-time {
+  font-size: 0.62rem;
+  color: var(--color-text-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.reason-tag.ball_in_your_court {
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
+.compact-subject {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 1px;
 }
 
-.reason-tag.went_cold {
-  color: var(--color-blue);
-  background: var(--color-blue-soft);
+.compact-summary {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 
-.reason-tag.date_coming_up {
+.compact-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.compact-tag {
+  font-size: 0.55rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 100px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.tag-ball_in_your_court { background: var(--color-accent-soft); color: var(--color-accent); }
+.tag-went_cold { background: var(--color-blue-soft); color: var(--color-blue); }
+.tag-date_coming_up { background: var(--color-success-soft); color: var(--color-success); }
+
+.compact-approve {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.compact-approve:hover,
+.compact-approve:active {
   color: var(--color-success);
+  border-color: var(--color-success);
   background: var(--color-success-soft);
 }
 
-.card-context {
+/* ── Expanded panel ── */
+.expanded-panel {
+  padding: 0 0 12px 40px;
+  border-bottom: 1px solid var(--color-border);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.expanded-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding-top: 2px;
+}
+
+.meta-direction {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+.meta-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--color-blue);
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+
+.meta-link:hover { opacity: 0.75; }
+
+.expanded-context {
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   line-height: 1.45;
   margin-bottom: 10px;
-  padding-left: 42px;
 }
 
-.card-actions {
+.expanded-actions {
   display: flex;
   gap: 6px;
-  padding-left: 42px;
 }
 
 .btn-action {
@@ -291,10 +399,9 @@ defineExpose({ onDraftReady })
   color: var(--color-text);
 }
 
-/* Draft section */
+/* ── Draft section ── */
 .draft-section {
   margin: 8px 0 10px;
-  padding-left: 42px;
 }
 
 .draft-loading {
@@ -359,6 +466,24 @@ defineExpose({ onDraftReady })
 }
 
 .btn-draft-save:hover { background: var(--color-primary-hover); }
+
+.btn-draft-imessage {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  background: #34C759;
+  color: #fff;
+  cursor: pointer;
+}
+
+.btn-draft-imessage:hover:not(:disabled) { background: #2db84e; }
+.btn-draft-imessage:disabled { opacity: 0.4; cursor: default; }
 
 .btn-draft-cancel {
   padding: 6px 14px;

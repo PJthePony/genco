@@ -136,7 +136,8 @@ const filteredContacts = computed(() => {
   return contacts.value.filter(c =>
     c.displayName.toLowerCase().includes(q) ||
     c.email.toLowerCase().includes(q) ||
-    (c.company && c.company.toLowerCase().includes(q))
+    (c.company && c.company.toLowerCase().includes(q)) ||
+    (c.phoneNumber && c.phoneNumber.includes(q))
   )
 })
 
@@ -334,7 +335,10 @@ async function submitFact() {
                 {{ contact.displayName }}
                 <span v-if="contact.company" class="contact-company">{{ contact.company }}</span>
               </div>
-              <div class="contact-email">{{ contact.email }}</div>
+              <div class="contact-email">
+                {{ contact.email }}
+                <span v-if="contact.phoneNumber" class="contact-phone">&middot; {{ contact.phoneNumber }}</span>
+              </div>
               <div v-if="contact.lastContactAt" class="contact-last">
                 Last contact: {{ daysAgo(contact.lastContactAt) }}d ago
                 <span v-if="contact.threadStatus" class="thread-status">&middot; {{ contact.threadStatus.replace(/_/g, ' ') }}</span>
@@ -784,6 +788,10 @@ async function submitFact() {
 .contact-email {
   font-size: 0.68rem;
   color: var(--color-text-muted);
+}
+
+.contact-phone {
+  color: #34C759;
 }
 
 .contact-last {

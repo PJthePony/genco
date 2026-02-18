@@ -16,6 +16,7 @@ const ACTION_LABELS = {
   unsubscribe: 'Unsubscribe',
   briefing: '+ Briefing',
   act: 'Act',
+  skip: 'Skip',
 }
 
 const ACTION_MESSAGES = {
@@ -25,16 +26,18 @@ const ACTION_MESSAGES = {
   unsubscribe: 'Unsubscribed & archived',
   briefing: 'Added to Daily Briefing',
   act: 'Done',
+  skip: 'Skipped',
 }
 
 /**
- * Map an API queue item to the card format the DecisionCard component expects.
+ * Map an API email queue item to the card format the DecisionCard component expects.
  */
 function toCard(item) {
   const action = item.aiRecommendedAction || 'archive'
   return {
     id: item.id,
     emailId: item.id,
+    type: 'email',
     sender: item.fromName || item.fromEmail.split('@')[0],
     org: getOrg(item.fromEmail),
     initials: getInitials(item.fromName, item.fromEmail),
@@ -52,8 +55,44 @@ function toCard(item) {
     replyDraft: item.aiReplyDraft,
     taskTitle: item.aiTaskTitle,
     bodyHtml: item.bodyHtml,
+    messageText: null,
     fromEmail: item.fromEmail,
+    fromPhone: null,
     fromName: item.fromName,
+    receivedAt: item.receivedAt,
+  }
+}
+
+/**
+ * Map an API message queue item to the same card format.
+ */
+function toMessageCard(item) {
+  const action = item.aiRecommendedAction || 'skip'
+  return {
+    id: item.id,
+    emailId: null,
+    type: 'message',
+    sender: item.senderName || item.senderPhone,
+    org: '',
+    initials: getInitials(item.senderName, item.senderPhone),
+    avatarClass: avatarColor(item.senderPhone),
+    time: timeAgo(item.receivedAt),
+    priority: item.aiPriority === 'high' ? 'p-high' : item.aiPriority === 'medium' ? 'p-med' : 'p-low',
+    subject: null,
+    summary: item.aiSummary || item.messageText?.slice(0, 120),
+    action: ACTION_LABELS[action] || 'Skip',
+    actionKey: action,
+    actionMsg: ACTION_MESSAGES[action] || 'Done',
+    cleared: false,
+    hasBriefing: false,
+    isUrgent: item.isUrgent,
+    replyDraft: item.aiReplyDraft,
+    taskTitle: null,
+    bodyHtml: null,
+    messageText: item.messageText,
+    fromEmail: null,
+    fromPhone: item.senderPhone,
+    fromName: item.senderName,
     receivedAt: item.receivedAt,
   }
 }
@@ -63,8 +102,17 @@ export function useQueue() {
     loading.value = true
     error.value = null
     try {
-      const data = await api('/queue')
-      items.value = (data.items || []).map(toCard)
+      const [emailData, msgData] = await Promise.all([
+        api('/queue'),
+        api('/messages/queue').catch(() => ({ items: [] })),
+      ])
+      const emailCards = (emailData.items || []).map(toCard)
+      const msgCards = (msgData.items || []).map(toMessageCard)
+      // Merge and sort: urgent first, then by recency
+      items.value = [...emailCards, ...msgCards].sort((a, b) => {
+        if (a.isUrgent !== b.isUrgent) return b.isUrgent ? 1 : -1
+        return new Date(b.receivedAt) - new Date(a.receivedAt)
+      })
     } catch (err) {
       error.value = err.message
       console.error('Failed to fetch queue:', err)
@@ -91,8 +139,14 @@ export function useQueue() {
   }
 
   async function executeAction(cardId, action, payload = {}) {
+    // Route to the correct endpoint based on card type
+    const card = items.value.find(c => c.id === cardId)
+    const endpoint = card?.type === 'message'
+      ? `/messages/${cardId}/action`
+      : `/queue/${cardId}/action`
+
     try {
-      const data = await api(`/queue/${cardId}/action`, {
+      const data = await api(endpoint, {
         method: 'POST',
         body: JSON.stringify({ action, ...payload }),
       })

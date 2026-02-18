@@ -9,6 +9,7 @@ import {
   senderSummaries,
   gmailConnections,
   emailQueue,
+  outboundMessages,
 } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { env } from "../config.js";
@@ -106,6 +107,7 @@ const addContactSchema = z.object({
   company: z.string().nullish(),
   title: z.string().nullish(),
   notes: z.string().nullish(),
+  phoneNumber: z.string().nullish(),
 });
 
 networkRoutes.post("/", async (c) => {
@@ -132,6 +134,7 @@ networkRoutes.post("/", async (c) => {
         company: body.company ?? null,
         title: body.title ?? null,
         notes: body.notes ?? null,
+        phoneNumber: body.phoneNumber ?? null,
       })
       .onConflictDoNothing()
       .returning();
@@ -166,6 +169,7 @@ const batchAddSchema = z.object({
       company: z.string().nullish(),
       title: z.string().nullish(),
       notes: z.string().nullish(),
+      phoneNumber: z.string().nullish(),
     }),
   ),
 });
@@ -193,6 +197,7 @@ networkRoutes.post("/batch", async (c) => {
         company: item.company ?? null,
         title: item.title ?? null,
         notes: item.notes ?? null,
+        phoneNumber: item.phoneNumber ?? null,
       })
       .onConflictDoNothing()
       .returning();
@@ -1032,6 +1037,67 @@ networkRoutes.post("/follow-ups/:id/save-draft", async (c) => {
   return c.json({ ok: true, draftId });
 });
 
+// ── Send Follow-Up as iMessage ───────────────────────────────────────────────
+
+networkRoutes.post("/follow-ups/:id/send-imessage", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: "Invalid follow-up ID" }, 400);
+  }
+
+  const rawBody = (await c.req.json().catch(() => null)) as {
+    body?: string;
+  } | null;
+  if (!rawBody?.body?.trim()) {
+    return c.json({ error: "Message body is required" }, 400);
+  }
+
+  // Get the follow-up
+  const followUp = await db.query.followUpQueue.findFirst({
+    where: eq(followUpQueue.id, id),
+  });
+
+  if (!followUp) {
+    return c.json({ error: "Follow-up not found" }, 404);
+  }
+
+  // Get the contact
+  const contact = await db.query.networkContacts.findFirst({
+    where: and(
+      eq(networkContacts.id, followUp.networkContactId),
+      eq(networkContacts.userId, user.sub),
+    ),
+  });
+
+  if (!contact) {
+    return c.json({ error: "Contact not found" }, 404);
+  }
+
+  if (!contact.phoneNumber) {
+    return c.json({ error: "Contact has no phone number" }, 422);
+  }
+
+  // Create outbound message for the bridge to send
+  await db.insert(outboundMessages).values({
+    userId: user.sub,
+    recipientPhone: contact.phoneNumber,
+    recipientName: contact.displayName,
+    messageText: rawBody.body.trim(),
+    sourceType: "follow_up_nudge",
+    sourceId: followUp.id,
+  });
+
+  // Mark follow-up as acted
+  await db
+    .update(followUpQueue)
+    .set({ status: "acted", aiDraft: rawBody.body.trim() })
+    .where(eq(followUpQueue.id, id));
+
+  return c.json({ ok: true });
+});
+
 // ── Parameterized routes (/:id) — must come AFTER literal paths ─────────────
 
 // GET /network/:id — single contact with context and follow-ups
@@ -1106,6 +1172,7 @@ networkRoutes.put("/:id", async (c) => {
     company?: string | null;
     title?: string | null;
     notes?: string | null;
+    phoneNumber?: string | null;
   }>();
 
   await db
@@ -1115,6 +1182,7 @@ networkRoutes.put("/:id", async (c) => {
       ...(body.company !== undefined && { company: body.company }),
       ...(body.title !== undefined && { title: body.title }),
       ...(body.notes !== undefined && { notes: body.notes }),
+      ...(body.phoneNumber !== undefined && { phoneNumber: body.phoneNumber }),
     })
     .where(
       and(eq(networkContacts.id, id), eq(networkContacts.userId, user.sub)),

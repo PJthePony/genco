@@ -81,16 +81,18 @@ function skipFeedback() {
       <div class="sender-info">
         <div class="sender-name">
           {{ card.sender }}
-          <span class="sender-org">{{ card.org }}</span>
+          <span v-if="card.org" class="sender-org">{{ card.org }}</span>
+          <span v-if="card.type === 'message'" class="type-badge type-message">iMessage</span>
           <div class="priority-dot" :class="card.priority"></div>
         </div>
         <div class="sender-time">{{ card.time }}</div>
       </div>
     </div>
 
-    <div class="card-subject">
+    <div v-if="card.subject" class="card-subject">
       <a href="#" @click.prevent="$emit('open-email', card.emailId)">{{ card.subject }}</a>
     </div>
+    <div v-if="card.type === 'message' && card.messageText" class="card-message-text">{{ card.messageText }}</div>
     <div class="card-summary">{{ card.summary }}</div>
 
     <div class="rec-label">Genco recommends</div>
@@ -107,7 +109,7 @@ function skipFeedback() {
 
     <!-- Alt actions -->
     <div class="alt-actions" :class="{ visible: showingAlts && !pendingAlt }">
-      <button v-if="card.hasBriefing" class="btn-alt" @click="selectAlt('+ Briefing', card.sender + ' added to Daily Briefing')">
+      <button v-if="card.hasBriefing && card.type !== 'message'" class="btn-alt" @click="selectAlt('+ Briefing', card.sender + ' added to Daily Briefing')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
         + Briefing
       </button>
@@ -123,7 +125,7 @@ function skipFeedback() {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/></svg>
         Archive
       </button>
-      <button v-if="card.action !== 'Unsubscribe'" class="btn-alt" @click="selectAlt('Unsubscribe', 'Unsubscribed')">
+      <button v-if="card.action !== 'Unsubscribe' && card.type !== 'message'" class="btn-alt" @click="selectAlt('Unsubscribe', 'Unsubscribed')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         Act
       </button>
@@ -243,6 +245,19 @@ function skipFeedback() {
   color: var(--color-text-muted);
 }
 
+.type-badge {
+  font-size: 0.55rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 100px;
+  letter-spacing: 0.02em;
+}
+
+.type-message {
+  color: #34C759;
+  background: rgba(52, 199, 89, 0.1);
+}
+
 .priority-dot {
   width: 5px;
   height: 5px;
@@ -272,6 +287,18 @@ function skipFeedback() {
 .card-subject a:hover,
 .card-subject a:active {
   color: var(--color-accent);
+}
+
+.card-message-text {
+  font-size: 0.82rem;
+  color: var(--color-text);
+  font-weight: 400;
+  line-height: 1.5;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  border-left: 2px solid #34C759;
 }
 
 .card-summary {

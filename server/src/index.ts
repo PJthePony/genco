@@ -9,6 +9,7 @@ import { emailRoutes } from "./routes/emails.js";
 import { feedbackRoutes } from "./routes/feedback.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { networkRoutes } from "./routes/network.js";
+import { messageRoutes } from "./routes/messages.js";
 import { startScheduler } from "./services/scheduler.js";
 
 const app = new Hono();
@@ -53,6 +54,7 @@ app.route("/emails", emailRoutes);
 app.route("/feedback", feedbackRoutes);
 app.route("/settings", settingsRoutes);
 app.route("/network", networkRoutes);
+app.route("/messages", messageRoutes);
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`Genco is running on http://localhost:${info.port}`);

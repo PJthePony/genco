@@ -258,6 +258,228 @@ export async function classifyEmail(
   throw lastError ?? new Error("Claude classification failed after retries");
 }
 
+// ── iMessage Classification ────────────────────────────────────────────────
+
+const CLASSIFY_MESSAGE_TOOL: Anthropic.Tool = {
+  name: "classify_message",
+  description:
+    "Classify an iMessage and recommend an action.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      summary: {
+        type: "string",
+        description:
+          "A concise 1 sentence summary of the message. What do they want?",
+      },
+      recommended_action: {
+        type: "string",
+        enum: ["reply", "add_task", "archive", "skip"],
+        description:
+          "The recommended action: 'reply' (needs a response), 'add_task' (creates a task in Tessio), 'archive' (no action needed — automated messages, group chat noise), 'skip' (not sure, let P.J. decide later)",
+      },
+      priority: {
+        type: "string",
+        enum: ["high", "medium", "low"],
+        description:
+          "Priority level based on sender importance and urgency.",
+      },
+      is_urgent: {
+        type: "boolean",
+        description:
+          "True ONLY if the message requires attention within the next hour — e.g., 'I'm outside', 'are you coming?', 'call me ASAP'. Most messages are NOT urgent.",
+      },
+      reply_draft: {
+        type: "string",
+        description:
+          "A draft reply if recommended_action is 'reply'. Write as P.J. — casual, short, text-message style. No formality. Leave blank if not a reply.",
+      },
+    },
+    required: [
+      "summary",
+      "recommended_action",
+      "priority",
+      "is_urgent",
+    ],
+  },
+};
+
+export interface MessageClassificationResult {
+  summary: string;
+  recommendedAction: string;
+  priority: string;
+  isUrgent: boolean;
+  replyDraft: string | null;
+}
+
+interface ClassifyMessageOptions {
+  senderPhone: string;
+  senderName: string;
+  messageText: string;
+  senderSummary?: string | null;
+  feedbackContext?: string;
+}
+
+export async function classifyMessage(
+  opts: ClassifyMessageOptions,
+): Promise<MessageClassificationResult> {
+  const systemParts: string[] = [
+    `You are Genco, P.J. Tanzillo's AI communications assistant. You're classifying an iMessage (text message).`,
+    ``,
+    `P.J. is "The Don" — a busy founder/builder. He gets a lot of texts and wants to triage them efficiently.`,
+    ``,
+    `CONTEXT: This is an iMessage, not an email. Messages are typically casual, brief, and conversational. Most personal messages from known contacts should be 'reply'.`,
+    ``,
+    `ACTIONS:`,
+    `- reply: The message needs a response from P.J. (most common for personal texts)`,
+    `- add_task: The message contains something P.J. needs to do (but not reply to right now)`,
+    `- archive: No action needed — automated messages, verification codes, delivery notifications, group chat noise`,
+    `- skip: Unclear — let P.J. decide`,
+    ``,
+    `PRIORITY:`,
+    `- high: Close friend/family, time-sensitive, or needs a decision`,
+    `- medium: Normal conversation, not time-sensitive`,
+    `- low: Automated, informational, or easily ignorable`,
+    ``,
+    `URGENCY: Only flag as urgent if someone is waiting right now — "I'm here", "running late?", "call me ASAP".`,
+    ``,
+    `REPLY DRAFTS: Write as P.J. texts — very casual, short, lowercase ok. Match text message tone. 1-2 sentences max.`,
+  ];
+
+  if (opts.senderSummary) {
+    systemParts.push(``);
+    systemParts.push(
+      `EXISTING RELATIONSHIP with ${opts.senderName || opts.senderPhone}:`,
+    );
+    systemParts.push(opts.senderSummary);
+  }
+
+  if (opts.feedbackContext) {
+    systemParts.push(``);
+    systemParts.push(
+      `USER FEEDBACK (P.J.'s past corrections — learn from these):`,
+    );
+    systemParts.push(opts.feedbackContext);
+  }
+
+  const system = systemParts.join("\n");
+
+  const userMessage = `From: ${opts.senderName || "Unknown"} (${opts.senderPhone})\n\n${opts.messageText}`;
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(
+          `Claude API retry attempt ${attempt + 1} after ${delay}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 512,
+        system,
+        tools: [CLASSIFY_MESSAGE_TOOL],
+        tool_choice: { type: "tool", name: "classify_message" },
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const toolUse = response.content.find(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+      );
+
+      if (!toolUse) {
+        throw new Error("Claude did not return a tool use response");
+      }
+
+      const input = toolUse.input as Record<string, unknown>;
+
+      return {
+        summary: (input.summary as string) ?? "",
+        recommendedAction: (input.recommended_action as string) ?? "skip",
+        priority: (input.priority as string) ?? "medium",
+        isUrgent: (input.is_urgent as boolean) ?? false,
+        replyDraft: (input.reply_draft as string) || null,
+      };
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError ?? new Error("Claude message classification failed after retries");
+}
+
+// ── iMessage Reply Draft ──────────────────────────────────────────────────
+
+export async function generateMessageReplyDraft(opts: {
+  senderName: string;
+  senderPhone: string;
+  messageText: string;
+  replyContext: string;
+  senderSummary?: string | null;
+}): Promise<string> {
+  const systemParts = [
+    `You are drafting an iMessage reply for P.J. Tanzillo.`,
+    `Write as P.J. texts — casual, short, no formality. Match text message tone.`,
+    `Keep it to 1-3 sentences max. This is a text, not an email.`,
+    ``,
+    `The user has given you specific instructions about what to say. Follow those instructions closely.`,
+  ];
+
+  if (opts.senderSummary) {
+    systemParts.push(``);
+    systemParts.push(`RELATIONSHIP WITH ${opts.senderName || opts.senderPhone}:`);
+    systemParts.push(opts.senderSummary);
+  }
+
+  const system = systemParts.join("\n");
+
+  const userMessage = [
+    `ORIGINAL MESSAGE:`,
+    `From: ${opts.senderName || "Unknown"} (${opts.senderPhone})`,
+    ``,
+    opts.messageText,
+    ``,
+    `P.J.'S INSTRUCTIONS FOR THE REPLY:`,
+    opts.replyContext,
+    ``,
+    `Write the reply now. Just the message text — nothing else.`,
+  ].join("\n");
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 256,
+        system,
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text",
+      );
+
+      return textBlock?.text ?? "Sounds good!";
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) throw err;
+    }
+  }
+
+  throw lastError ?? new Error("Failed to generate message reply draft");
+}
+
 // ── Sender Summary from History ────────────────────────────────────────
 
 export interface SenderHistoryItem {

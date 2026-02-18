@@ -28,6 +28,10 @@ function toDigestItem(item) {
   return {
     id: item.id,
     source: item.fromName || item.fromEmail.split('@')[0],
+    fromEmail: item.fromEmail,
+    fromName: item.fromName,
+    subject: item.subject,
+    bodyHtml: item.bodyHtml,
     tag,
     tagClass,
     summary: item.aiSummary || item.subject,

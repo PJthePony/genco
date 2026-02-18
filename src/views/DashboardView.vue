@@ -19,7 +19,7 @@ const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, allCleared, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
 const { items: digestItems, fetchDigest } = useDigest()
-const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, scanThreads, scanningThreads, scanProgress } = useNetwork()
+const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
@@ -112,6 +112,15 @@ async function handleSaveDraft(id, body) {
   }
 }
 
+async function handleSendMessage(id, body) {
+  try {
+    await sendFollowUpAsMessage(id, body)
+    showToast('Message queued for sending')
+  } catch (err) {
+    showToast('Failed to queue message')
+  }
+}
+
 // ── Briefing Sources ──
 const briefingSources = ref([])
 
@@ -155,6 +164,22 @@ function openEmail(emailId) {
         month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
       }),
       body: card.bodyHtml || '<p>(No content)</p>',
+    }
+    emailModalOpen.value = true
+  }
+}
+
+function openDigestEmail(itemId) {
+  const item = digestItems.value.find(d => d.id === itemId)
+  if (item) {
+    activeEmail.value = {
+      subject: item.subject || item.summary,
+      from: item.fromName ? `${item.fromName} <${item.fromEmail}>` : item.fromEmail,
+      to: 'pjtanzillo@gmail.com',
+      date: new Date(item.receivedAt).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+      }),
+      body: item.bodyHtml || '<p>(No content)</p>',
     }
     emailModalOpen.value = true
   }
@@ -464,6 +489,7 @@ onUnmounted(() => {
         :items="digestItems"
         @manage-sources="settingsOpen = true"
         @promote="promoteDigestItem"
+        @open-email="openDigestEmail"
       />
 
       <!-- Follow Up (proactive outreach) -->
@@ -475,6 +501,7 @@ onUnmounted(() => {
         @snooze="handleFollowUpSnooze"
         @dismiss="handleFollowUpDismiss"
         @save-draft="handleSaveDraft"
+        @send-imessage="handleSendMessage"
         @scan-threads="handleScanThreads"
         @manage-network="networkModalOpen = true"
       />

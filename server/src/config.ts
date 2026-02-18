@@ -16,6 +16,7 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().startsWith("sk-ant-"),
   TESSIO_API_URL: z.string().url().optional(),
   TESSIO_SERVICE_KEY: z.string().startsWith("tsvc_").optional(),
+  BRIDGE_API_KEY: z.string().min(1).optional(),
   PORT: z.coerce.number().default(3001),
   APP_URL: z.string().url().default("http://localhost:3001"),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),

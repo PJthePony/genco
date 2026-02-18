@@ -178,6 +178,7 @@ export const networkContacts = pgTable(
     threadStatus: text("thread_status"), // "awaiting_their_reply" | "awaiting_your_reply" | "dormant" | "conversation_ended"
     gmailThreadId: text("gmail_thread_id"),
     lastSubject: text("last_subject"),
+    phoneNumber: text("phone_number"),
     addedAt: timestamp("added_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -213,6 +214,61 @@ export const contactContext = pgTable(
   (table) => [
     index("idx_contact_context_contact").on(table.networkContactId),
     index("idx_contact_context_date").on(table.dateRelevant),
+  ],
+);
+
+// ── Message Queue (iMessage) ────────────────────────────────────────────────
+
+export const messageQueue = pgTable(
+  "message_queue",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
+    messageHash: text("message_hash").notNull(),
+    senderPhone: text("sender_phone").notNull(),
+    senderName: text("sender_name"),
+    messageText: text("message_text").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    isFromMe: boolean("is_from_me").notNull().default(false),
+    aiSummary: text("ai_summary"),
+    aiRecommendedAction: text("ai_recommended_action"),
+    aiPriority: text("ai_priority"),
+    aiReplyDraft: text("ai_reply_draft"),
+    isUrgent: boolean("is_urgent").notNull().default(false),
+    status: text("status").notNull().default("pending"),
+    chosenAction: text("chosen_action"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_message_queue_hash").on(table.userId, table.messageHash),
+    index("idx_message_queue_user_status").on(table.userId, table.status),
+    index("idx_message_queue_user_urgent").on(table.userId, table.isUrgent),
+  ],
+);
+
+// ── Outbound Messages (iMessage sends) ──────────────────────────────────────
+
+export const outboundMessages = pgTable(
+  "outbound_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
+    recipientPhone: text("recipient_phone").notNull(),
+    recipientName: text("recipient_name"),
+    messageText: text("message_text").notNull(),
+    sourceType: text("source_type"), // "message_reply" | "follow_up_nudge"
+    sourceId: uuid("source_id"),
+    status: text("status").notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_outbound_messages_status").on(table.userId, table.status),
   ],
 );
 

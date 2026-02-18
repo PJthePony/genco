@@ -79,6 +79,7 @@ queueRoutes.get("/digest", async (c) => {
       fromEmail: true,
       fromName: true,
       subject: true,
+      bodyHtml: true,
       aiSummary: true,
       receivedAt: true,
     },

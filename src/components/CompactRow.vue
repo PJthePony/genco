@@ -19,7 +19,10 @@ function truncate(text, max) {
         <span class="compact-sender">{{ card.sender }}</span>
         <span class="compact-time">{{ card.time }}</span>
       </div>
-      <div class="compact-subject">{{ truncate(card.subject, 60) }}</div>
+      <div class="compact-subject">
+        <span v-if="card.type === 'message'" class="compact-type-badge">iMessage</span>
+        {{ truncate(card.subject || card.messageText, 60) }}
+      </div>
       <div class="compact-summary">{{ truncate(card.summary, 80) }}</div>
     </div>
     <div class="compact-right">
@@ -148,6 +151,18 @@ function truncate(text, max) {
 .tag-archive { background: var(--color-bg); color: var(--color-text-muted); }
 .tag-unsubscribe { background: var(--color-accent-soft); color: var(--color-accent); }
 .tag-act { background: var(--color-success-soft); color: var(--color-success); }
+.tag-skip { background: var(--color-bg); color: var(--color-text-muted); }
+
+.compact-type-badge {
+  font-size: 0.5rem;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 100px;
+  color: #34C759;
+  background: rgba(52, 199, 89, 0.1);
+  vertical-align: 1px;
+  margin-right: 3px;
+}
 
 .compact-approve {
   width: 32px;

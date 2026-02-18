@@ -8,17 +8,24 @@ const props = defineProps({
   scanProgress: Object,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft', 'manage-network', 'scan-threads'])
+const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft', 'send-imessage', 'manage-network', 'scan-threads'])
 
 const expanded = ref(true)
+const expandedCardId = ref(null)
 
 function toggle() { expanded.value = !expanded.value }
 
+function toggleCard(id) {
+  expandedCardId.value = expandedCardId.value === id ? null : id
+}
+
 function handleSnooze(id, days) {
+  expandedCardId.value = null
   emit('snooze', id, days)
 }
 
 function handleDismiss(id) {
+  expandedCardId.value = null
   emit('dismiss', id)
 }
 
@@ -28,6 +35,10 @@ function handleDraft(id) {
 
 function handleSaveDraft(id, body) {
   emit('save-draft', id, body)
+}
+
+function handleSendMessage(id, body) {
+  emit('send-imessage', id, body)
 }
 </script>
 
@@ -62,11 +73,13 @@ function handleSaveDraft(id, body) {
           v-for="card in items"
           :key="card.id"
           :card="card"
+          :expanded="expandedCardId === card.id"
+          @expand="toggleCard(card.id)"
           @draft="handleDraft"
           @snooze="handleSnooze"
           @dismiss="handleDismiss"
           @save-draft="handleSaveDraft"
-          @act="$emit('act', $event)"
+          @send-imessage="handleSendMessage"
         />
       </template>
       <div v-else class="empty-state">
@@ -185,6 +198,7 @@ function handleSaveDraft(id, body) {
   padding: 10px 0 4px;
   display: flex;
   justify-content: center;
+  gap: 8px;
 }
 
 .btn-manage {

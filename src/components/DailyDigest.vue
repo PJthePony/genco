@@ -6,7 +6,7 @@ defineProps({
   items: Array,
 })
 
-defineEmits(['manage-sources', 'promote'])
+defineEmits(['manage-sources', 'promote', 'open-email'])
 
 const expanded = ref(false)
 
@@ -37,6 +37,7 @@ function toggle() { expanded.value = !expanded.value }
             <span class="briefing-item-source">{{ item.source }}</span>
             <span class="briefing-item-tag" :class="item.tagClass">{{ item.tag }}</span>
             <span class="briefing-item-time">{{ timeAgo(item.receivedAt) }}</span>
+            <button class="briefing-item-view" @click.stop="$emit('open-email', item.id)">View</button>
             <button class="briefing-item-action" @click.stop="$emit('promote', item.id)">Action</button>
           </div>
           <div class="briefing-item-summary">{{ item.summary }}</div>
@@ -184,8 +185,28 @@ function toggle() { expanded.value = !expanded.value }
   white-space: nowrap;
 }
 
-.briefing-item-action {
+.briefing-item-view {
   margin-left: auto;
+  font-size: 0.65rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text-muted);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.briefing-item-view:hover {
+  color: var(--color-blue);
+  border-color: var(--color-blue-soft);
+  background: var(--color-blue-soft);
+}
+
+.briefing-item-action {
   font-size: 0.65rem;
   font-weight: 500;
   font-family: inherit;

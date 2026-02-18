@@ -37,6 +37,7 @@ function toFollowUpCard(item) {
     contactId: contact.id,
     contactName: contact.displayName || contact.email?.split('@')[0] || 'Unknown',
     contactEmail: contact.email || '',
+    contactPhone: contact.phoneNumber || null,
     company: contact.company || '',
     initials: getInitials(contact.displayName, contact.email || ''),
     avatarClass: avatarColor(contact.email || ''),
@@ -50,6 +51,7 @@ function toFollowUpCard(item) {
     lastContactAt: contact.lastContactAt,
     lastDirection: contact.lastDirection,
     lastSubject: contact.lastSubject,
+    gmailThreadId: contact.gmailThreadId || null,
     daysAgo: daysAgo(contact.lastContactAt),
     status: item.status,
     drafting: false,
@@ -326,6 +328,21 @@ export function useNetwork() {
     }
   }
 
+  async function sendFollowUpAsMessage(followUpId, body) {
+    try {
+      const data = await api(`/network/follow-ups/${followUpId}/send-imessage`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      })
+      // Remove from local state (it's been acted on)
+      followUps.value = followUps.value.filter(f => f.id !== followUpId)
+      return data
+    } catch (err) {
+      console.error('Failed to send iMessage:', err)
+      throw err
+    }
+  }
+
   async function batchAddContacts(contactsList) {
     try {
       const data = await api('/network/batch', {
@@ -384,6 +401,7 @@ export function useNetwork() {
     actOnFollowUp,
     generateDraft,
     saveDraftToGmail,
+    sendFollowUpAsMessage,
     scanThreads,
     seedContacts,
     batchAddContacts,
