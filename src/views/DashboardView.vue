@@ -4,18 +4,22 @@ import { useAuth } from '../composables/useAuth'
 import { useFeedback } from '../composables/useFeedback'
 import { useGroupedQueue } from '../composables/useGroupedQueue'
 import { useDigest } from '../composables/useDigest'
+import { useNetwork } from '../composables/useNetwork'
 import { api } from '../composables/useApi'
 import AppHeader from '../components/AppHeader.vue'
 import ActionSection from '../components/ActionSection.vue'
+import FollowUpSection from '../components/FollowUpSection.vue'
 import DailyDigest from '../components/DailyDigest.vue'
 import EmailModal from '../components/EmailModal.vue'
 import SettingsModal from '../components/SettingsModal.vue'
+import NetworkModal from '../components/NetworkModal.vue'
 import ToastNotification from '../components/ToastNotification.vue'
 
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, allCleared, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
 const { items: digestItems, fetchDigest } = useDigest()
+const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft } = useNetwork()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
@@ -60,6 +64,35 @@ function showToast(message) {
 
 // ── Settings ──
 const settingsOpen = ref(false)
+
+// ── Network ──
+const networkModalOpen = ref(false)
+
+async function handleFollowUpSnooze(id, days) {
+  try {
+    await actOnFollowUp(id, 'snooze', days)
+    showToast('Snoozed')
+  } catch (err) {
+    showToast('Snooze failed')
+  }
+}
+
+async function handleFollowUpDismiss(id) {
+  try {
+    await actOnFollowUp(id, 'dismiss')
+    showToast('Dismissed')
+  } catch (err) {
+    showToast('Dismiss failed')
+  }
+}
+
+async function handleFollowUpDraft(id) {
+  try {
+    await generateDraft(id)
+  } catch (err) {
+    showToast('Draft generation failed')
+  }
+}
 
 // ── Briefing Sources ──
 const briefingSources = ref([])
@@ -354,6 +387,7 @@ onMounted(async () => {
 
   await fetchQueue()
   await fetchDigest()
+  fetchFollowUps()
   loadBriefingSources()
 })
 
@@ -428,6 +462,16 @@ onUnmounted(() => {
         @bulk-approve="handleBulkApprove"
       />
 
+      <!-- Follow Up (proactive outreach) -->
+      <FollowUpSection
+        v-if="followUpCount > 0"
+        :items="followUps"
+        @draft="handleFollowUpDraft"
+        @snooze="handleFollowUpSnooze"
+        @dismiss="handleFollowUpDismiss"
+        @manage-network="networkModalOpen = true"
+      />
+
       <!-- Daily Digest -->
       <DailyDigest
         v-if="digestItems.length > 0"
@@ -475,6 +519,11 @@ onUnmounted(() => {
       @remove-source="removeBriefingSource"
       @add-source="loadBriefingSources"
       @clear-feedback="clearFeedback"
+    />
+
+    <NetworkModal
+      :open="networkModalOpen"
+      @close="networkModalOpen = false"
     />
 
     <ToastNotification :message="toastMessage" :visible="toastVisible" />

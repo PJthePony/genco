@@ -161,3 +161,82 @@ export const userPreferences = pgTable(
   },
   (table) => [uniqueIndex("idx_user_preferences_user").on(table.userId)],
 );
+
+// ── Network Contacts (Personal CRM) ────────────────────────────────────────
+
+export const networkContacts = pgTable(
+  "network_contacts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    company: text("company"),
+    title: text("title"),
+    lastContactAt: timestamp("last_contact_at", { withTimezone: true }),
+    lastDirection: text("last_direction"), // "sent" | "received"
+    threadStatus: text("thread_status"), // "awaiting_their_reply" | "awaiting_your_reply" | "dormant" | "conversation_ended"
+    gmailThreadId: text("gmail_thread_id"),
+    lastSubject: text("last_subject"),
+    addedAt: timestamp("added_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    notes: text("notes"),
+  },
+  (table) => [
+    uniqueIndex("idx_network_contacts_user_email").on(table.userId, table.email),
+    index("idx_network_contacts_user").on(table.userId),
+    index("idx_network_contacts_thread_status").on(
+      table.userId,
+      table.threadStatus,
+    ),
+  ],
+);
+
+// ── Contact Context (Personal Facts) ────────────────────────────────────────
+
+export const contactContext = pgTable(
+  "contact_context",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    networkContactId: uuid("network_contact_id")
+      .notNull()
+      .references(() => networkContacts.id, { onDelete: "cascade" }),
+    fact: text("fact").notNull(),
+    dateRelevant: timestamp("date_relevant", { withTimezone: true }),
+    sourceSubject: text("source_subject"),
+    extractedAt: timestamp("extracted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expired: boolean("expired").notNull().default(false),
+  },
+  (table) => [
+    index("idx_contact_context_contact").on(table.networkContactId),
+    index("idx_contact_context_date").on(table.dateRelevant),
+  ],
+);
+
+// ── Follow-Up Queue ─────────────────────────────────────────────────────────
+
+export const followUpQueue = pgTable(
+  "follow_up_queue",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    networkContactId: uuid("network_contact_id")
+      .notNull()
+      .references(() => networkContacts.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(), // "ball_in_your_court" | "went_cold" | "date_coming_up"
+    surfacedAt: timestamp("surfaced_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    status: text("status").notNull().default("pending"), // "pending" | "acted" | "snoozed" | "dismissed"
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+    suggestedAction: text("suggested_action"), // "reply" | "compose_new" | "check_in"
+    aiDraft: text("ai_draft"),
+    contextSnapshot: text("context_snapshot"),
+  },
+  (table) => [
+    index("idx_follow_up_queue_contact").on(table.networkContactId),
+    index("idx_follow_up_queue_status").on(table.status),
+  ],
+);

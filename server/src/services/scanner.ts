@@ -4,6 +4,7 @@ import {
   gmailConnections,
   emailQueue,
   briefingSources,
+  networkContacts,
 } from "../db/schema.js";
 import {
   fetchInboxEmails,
@@ -100,6 +101,15 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
   });
   const briefingEmails = new Set(sources.map((s) => s.emailAddress.toLowerCase()));
 
+  // Load network contacts so we can update their tracking during scan
+  const networkContactsList = await db.query.networkContacts.findMany({
+    where: eq(networkContacts.userId, userId),
+    columns: { id: true, email: true },
+  });
+  const networkEmailMap = new Map(
+    networkContactsList.map((nc) => [nc.email.toLowerCase(), nc.id]),
+  );
+
   const userEmail = connection.gmailAddress;
   const now = Date.now();
   let inserted = 0;
@@ -171,6 +181,43 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
         alreadyReplied++;
       } else {
         inserted++;
+      }
+
+      // Update network contact tracking if sender is in the network
+      const networkContactId = networkEmailMap.get(email.fromEmail.toLowerCase());
+      if (networkContactId && !isHistorical) {
+        try {
+          if (userAlreadyReplied) {
+            // P.J. already replied — ball is in their court
+            await db
+              .update(networkContacts)
+              .set({
+                lastContactAt: email.receivedAt,
+                lastDirection: "sent",
+                threadStatus: "awaiting_their_reply",
+                gmailThreadId: email.gmailThreadId,
+                lastSubject: email.subject,
+              })
+              .where(eq(networkContacts.id, networkContactId));
+          } else {
+            // New incoming email — ball is in P.J.'s court
+            await db
+              .update(networkContacts)
+              .set({
+                lastContactAt: email.receivedAt,
+                lastDirection: "received",
+                threadStatus: "awaiting_your_reply",
+                gmailThreadId: email.gmailThreadId,
+                lastSubject: email.subject,
+              })
+              .where(eq(networkContacts.id, networkContactId));
+          }
+        } catch (err) {
+          console.warn(
+            `Failed to update network contact for ${email.fromEmail}:`,
+            err,
+          );
+        }
       }
 
       // Auto-archive briefing source emails in Gmail (only recent ones)

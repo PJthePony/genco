@@ -6,6 +6,8 @@ import {
   briefingSources,
   senderSummaries,
   gmailConnections,
+  networkContacts,
+  contactContext,
 } from "../db/schema.js";
 import { classifyEmail, buildSenderSummaryFromHistory } from "../lib/claude.js";
 import {
@@ -63,6 +65,15 @@ export async function classifyPendingEmails(
   });
   const summaryMap = new Map(
     allSummaries.map((s) => [s.senderEmail, s]),
+  );
+
+  // Load network contacts for personal context extraction
+  const networkContactsList = await db.query.networkContacts.findMany({
+    where: eq(networkContacts.userId, userId),
+    columns: { id: true, email: true },
+  });
+  const networkContactMap = new Map(
+    networkContactsList.map((nc) => [nc.email.toLowerCase(), nc.id]),
   );
 
   // Get Gmail tokens for sender history lookups
@@ -128,6 +139,7 @@ export async function classifyPendingEmails(
 
       // Look up sender summary (may have just been created above)
       const existingSummary = summaryMap.get(email.fromEmail);
+      const isNetworkContact = networkContactMap.has(email.fromEmail.toLowerCase());
 
       const result = await classifyEmail({
         fromName: email.fromName ?? "",
@@ -137,6 +149,7 @@ export async function classifyPendingEmails(
         senderSummary: existingSummary?.summary ?? null,
         feedbackContext,
         briefingSourceEmails,
+        isNetworkContact,
       });
 
       // Update email with classification results
@@ -197,6 +210,31 @@ export async function classifyPendingEmails(
             summaryMap.set(email.fromEmail, newSummary);
           }
         }
+      }
+
+      // Persist personal context facts for network contacts
+      if (isNetworkContact && result.personalContext?.length) {
+        const contactId = networkContactMap.get(email.fromEmail.toLowerCase())!;
+        for (const pc of result.personalContext) {
+          try {
+            await db.insert(contactContext).values({
+              networkContactId: contactId,
+              fact: pc.fact,
+              dateRelevant: pc.dateRelevant
+                ? new Date(pc.dateRelevant)
+                : null,
+              sourceSubject: email.subject,
+            });
+          } catch (err) {
+            console.warn(
+              `Failed to insert personal context for ${email.fromEmail}:`,
+              err,
+            );
+          }
+        }
+        console.log(
+          `Extracted ${result.personalContext.length} personal facts from "${email.subject}" for ${email.fromEmail}`,
+        );
       }
 
       // Auto-process briefing items — they go straight to the digest,

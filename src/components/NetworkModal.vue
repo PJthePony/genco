@@ -1,0 +1,641 @@
+<script setup>
+import { ref, watch } from 'vue'
+import { useNetwork } from '../composables/useNetwork'
+import { avatarColor, getInitials, daysAgo } from '../lib/formatters'
+
+const props = defineProps({
+  open: Boolean,
+})
+
+const emit = defineEmits(['close'])
+
+const {
+  contacts,
+  suggestions,
+  loading,
+  seeding,
+  fetchContacts,
+  addContact,
+  removeContact,
+  seedContacts,
+  batchAddContacts,
+  addFact,
+} = useNetwork()
+
+// Tabs
+const activeTab = ref('contacts') // 'contacts' | 'seed'
+
+// Add contact form
+const adding = ref(false)
+const newEmail = ref('')
+const newName = ref('')
+const newCompany = ref('')
+const addError = ref('')
+const addLoading = ref(false)
+
+// Seed flow
+const selectedSuggestions = ref(new Set())
+const batchAdding = ref(false)
+
+// Fact form
+const addingFactFor = ref(null)
+const newFact = ref('')
+const newFactDate = ref('')
+
+watch(() => props.open, (isOpen) => {
+  if (isOpen) {
+    fetchContacts()
+    activeTab.value = 'contacts'
+    adding.value = false
+    addError.value = ''
+  }
+})
+
+function startAdd() {
+  adding.value = true
+  newEmail.value = ''
+  newName.value = ''
+  newCompany.value = ''
+  addError.value = ''
+}
+
+function cancelAdd() {
+  adding.value = false
+  addError.value = ''
+}
+
+async function submitAdd() {
+  const email = newEmail.value.trim()
+  const name = newName.value.trim()
+  if (!email || !email.includes('@')) {
+    addError.value = 'Enter a valid email'
+    return
+  }
+  if (!name) {
+    addError.value = 'Name is required'
+    return
+  }
+
+  addLoading.value = true
+  addError.value = ''
+
+  try {
+    await addContact({
+      email,
+      displayName: name,
+      company: newCompany.value.trim() || null,
+    })
+    adding.value = false
+  } catch (err) {
+    addError.value = 'Failed to add contact'
+  } finally {
+    addLoading.value = false
+  }
+}
+
+async function handleRemove(id) {
+  try {
+    await removeContact(id)
+  } catch (err) {
+    // handled in composable
+  }
+}
+
+// Seed flow
+async function handleSeed() {
+  activeTab.value = 'seed'
+  selectedSuggestions.value = new Set()
+  await seedContacts()
+  // Pre-select all
+  suggestions.value.forEach((s, i) => selectedSuggestions.value.add(i))
+}
+
+function toggleSuggestion(index) {
+  if (selectedSuggestions.value.has(index)) {
+    selectedSuggestions.value.delete(index)
+  } else {
+    selectedSuggestions.value.add(index)
+  }
+}
+
+async function approveSelected() {
+  batchAdding.value = true
+  const selected = [...selectedSuggestions.value].map(i => suggestions.value[i])
+  try {
+    await batchAddContacts(
+      selected.map(s => ({
+        email: s.email,
+        displayName: s.displayName,
+      })),
+    )
+    activeTab.value = 'contacts'
+  } catch (err) {
+    // handled in composable
+  } finally {
+    batchAdding.value = false
+  }
+}
+
+// Fact management
+function startAddFact(contactId) {
+  addingFactFor.value = contactId
+  newFact.value = ''
+  newFactDate.value = ''
+}
+
+async function submitFact() {
+  if (!newFact.value.trim()) return
+  try {
+    await addFact(addingFactFor.value, newFact.value.trim(), newFactDate.value || null)
+    addingFactFor.value = null
+  } catch (err) {
+    // handled in composable
+  }
+}
+</script>
+
+<template>
+  <Teleport to="body">
+    <div v-if="open" class="modal-overlay" @click.self="$emit('close')">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Your Network</h2>
+          <button class="btn-close" @click="$emit('close')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- Tab navigation -->
+        <div class="modal-tabs">
+          <button
+            class="tab"
+            :class="{ active: activeTab === 'contacts' }"
+            @click="activeTab = 'contacts'"
+          >Contacts ({{ contacts.length }})</button>
+          <button
+            class="tab"
+            :class="{ active: activeTab === 'seed' }"
+            @click="activeTab = 'seed'"
+          >Discover</button>
+        </div>
+
+        <!-- Contacts tab -->
+        <div v-if="activeTab === 'contacts'" class="modal-body">
+          <div class="contacts-actions">
+            <button class="btn-add" @click="startAdd" v-if="!adding">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add contact
+            </button>
+            <button class="btn-seed" @click="handleSeed" :disabled="seeding" v-if="!adding">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              {{ seeding ? 'Searching...' : 'Seed from Gmail' }}
+            </button>
+          </div>
+
+          <!-- Add form -->
+          <div v-if="adding" class="add-form">
+            <input v-model="newEmail" type="email" placeholder="Email address" class="input" />
+            <input v-model="newName" type="text" placeholder="Name" class="input" />
+            <input v-model="newCompany" type="text" placeholder="Company (optional)" class="input" />
+            <div v-if="addError" class="form-error">{{ addError }}</div>
+            <div class="add-form-actions">
+              <button class="btn-submit" @click="submitAdd" :disabled="addLoading">
+                {{ addLoading ? 'Adding...' : 'Add' }}
+              </button>
+              <button class="btn-cancel" @click="cancelAdd">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Contact list -->
+          <div v-if="contacts.length === 0 && !loading" class="empty-contacts">
+            <p>No contacts yet. Add people you want to stay in touch with.</p>
+          </div>
+
+          <div v-for="contact in contacts" :key="contact.id" class="contact-row">
+            <div class="avatar" :class="avatarColor(contact.email)">
+              {{ getInitials(contact.displayName, contact.email) }}
+            </div>
+            <div class="contact-info">
+              <div class="contact-name">
+                {{ contact.displayName }}
+                <span v-if="contact.company" class="contact-company">{{ contact.company }}</span>
+              </div>
+              <div class="contact-email">{{ contact.email }}</div>
+              <div v-if="contact.lastContactAt" class="contact-last">
+                Last contact: {{ daysAgo(contact.lastContactAt) }}d ago
+                <span v-if="contact.threadStatus" class="thread-status">&middot; {{ contact.threadStatus.replace(/_/g, ' ') }}</span>
+              </div>
+            </div>
+            <div class="contact-actions">
+              <button class="btn-fact" @click="startAddFact(contact.id)" title="Add fact">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button class="btn-remove" @click="handleRemove(contact.id)" title="Remove">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <!-- Inline fact form -->
+            <div v-if="addingFactFor === contact.id" class="fact-form">
+              <input v-model="newFact" type="text" placeholder="e.g. Birthday March 12, daughter starting college" class="input input-sm" />
+              <input v-model="newFactDate" type="date" class="input input-sm input-date" />
+              <div class="fact-form-actions">
+                <button class="btn-submit btn-sm" @click="submitFact">Save</button>
+                <button class="btn-cancel btn-sm" @click="addingFactFor = null">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seed/Discover tab -->
+        <div v-if="activeTab === 'seed'" class="modal-body">
+          <div v-if="seeding" class="seed-loading">
+            <span class="seed-spinner"></span>
+            Scanning your sent mail for top contacts...
+          </div>
+
+          <div v-else-if="suggestions.length === 0" class="empty-contacts">
+            <p>Click "Seed from Gmail" to discover your most-emailed contacts.</p>
+          </div>
+
+          <div v-else>
+            <div class="seed-header">
+              <p class="seed-description">Found {{ suggestions.length }} contacts you email frequently. Select the ones to add.</p>
+              <div class="seed-actions">
+                <button class="btn-submit" @click="approveSelected" :disabled="batchAdding || selectedSuggestions.size === 0">
+                  {{ batchAdding ? 'Adding...' : `Add ${selectedSuggestions.size} selected` }}
+                </button>
+              </div>
+            </div>
+
+            <div v-for="(s, i) in suggestions" :key="s.email" class="suggestion-row" @click="toggleSuggestion(i)">
+              <input type="checkbox" :checked="selectedSuggestions.has(i)" class="suggestion-check" @click.stop="toggleSuggestion(i)" />
+              <div class="avatar avatar-sm" :class="avatarColor(s.email)">
+                {{ getInitials(s.displayName, s.email) }}
+              </div>
+              <div class="suggestion-info">
+                <div class="suggestion-name">{{ s.displayName }}</div>
+                <div class="suggestion-email">{{ s.email }}</div>
+                <div v-if="s.senderSummary" class="suggestion-summary">{{ s.senderSummary }}</div>
+              </div>
+              <span class="suggestion-count">{{ s.messageCount }} emails</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+</template>
+
+<style scoped>
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 520px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-header h2 {
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.btn-close:hover { color: var(--color-text); }
+
+.modal-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 20px;
+}
+
+.tab {
+  padding: 10px 16px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all var(--transition-fast);
+}
+
+.tab.active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+.tab:hover:not(.active) { color: var(--color-text-secondary); }
+
+.modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.contacts-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.btn-add, .btn-seed {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-add:hover, .btn-seed:hover { border-color: var(--color-text-muted); color: var(--color-text); }
+.btn-seed:disabled { opacity: 0.6; cursor: default; }
+
+.add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.input {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.input:focus { outline: none; border-color: var(--color-accent-border); }
+
+.input-sm { padding: 6px 10px; font-size: 0.72rem; }
+.input-date { max-width: 160px; }
+
+.form-error {
+  font-size: 0.7rem;
+  color: var(--color-danger);
+}
+
+.add-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-submit {
+  padding: 7px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+}
+
+.btn-submit:hover:not(:disabled) { background: var(--color-primary-hover); }
+.btn-submit:disabled { opacity: 0.6; cursor: default; }
+
+.btn-cancel {
+  padding: 7px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.btn-sm { padding: 5px 12px; font-size: 0.68rem; }
+
+.empty-contacts {
+  text-align: center;
+  padding: 30px 10px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.contact-row:last-child { border-bottom: none; }
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.avatar.av-orange { background: #f97316; }
+.avatar.av-blue { background: #3b82f6; }
+.avatar.av-purple { background: #8b5cf6; }
+.avatar.av-green { background: #059669; }
+.avatar.av-red { background: #ef4444; }
+
+.avatar-sm { width: 28px; height: 28px; font-size: 0.58rem; }
+
+.contact-info { flex: 1; min-width: 0; }
+
+.contact-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.contact-company {
+  font-weight: 400;
+  color: var(--color-text-muted);
+  margin-left: 4px;
+}
+
+.contact-email {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+.contact-last {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.thread-status {
+  color: var(--color-text-muted);
+}
+
+.contact-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-fact, .btn-remove {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.btn-fact:hover { color: var(--color-success); border-color: var(--color-success); }
+.btn-remove:hover { color: var(--color-danger); border-color: var(--color-danger); }
+
+.fact-form {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 0 0 42px;
+}
+
+.fact-form .input { flex: 1; min-width: 120px; }
+.fact-form-actions { display: flex; gap: 6px; width: 100%; }
+
+/* Seed tab */
+.seed-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 10px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.seed-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.seed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.seed-description {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.suggestion-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.suggestion-row:hover { background: var(--color-bg); margin: 0 -8px; padding: 8px 8px; border-radius: var(--radius-md); }
+
+.suggestion-check {
+  flex-shrink: 0;
+  accent-color: var(--color-accent);
+}
+
+.suggestion-info { flex: 1; min-width: 0; }
+
+.suggestion-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.suggestion-email {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+.suggestion-summary {
+  font-size: 0.68rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.suggestion-count {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+</style>

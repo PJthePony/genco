@@ -56,6 +56,26 @@ const CLASSIFY_EMAIL_TOOL: Anthropic.Tool = {
         description:
           "An updated summary of P.J.'s relationship with this sender. Include: who they are, their role/org, what the ongoing conversation is about, how P.J. typically interacts with them, and any patterns. 2-4 sentences max. If this is the first email from this sender, create the initial summary. If a previous summary exists, update it with context from this email.",
       },
+      personal_context: {
+        type: "array",
+        description:
+          "Personal facts about the sender extracted from this email. Only populate when instructed. Short, specific facts like 'Daughter Emma starting college in September', 'Training for a marathon', 'Birthday is March 12'. Include date_relevant as an ISO date string if the fact is time-bound.",
+        items: {
+          type: "object",
+          properties: {
+            fact: {
+              type: "string",
+              description: "A short personal fact or life event",
+            },
+            date_relevant: {
+              type: "string",
+              description:
+                "ISO date (YYYY-MM-DD) if the fact is time-bound, omit otherwise",
+            },
+          },
+          required: ["fact"],
+        },
+      },
     },
     required: [
       "summary",
@@ -69,6 +89,11 @@ const CLASSIFY_EMAIL_TOOL: Anthropic.Tool = {
 
 // ── Classification ──────────────────────────────────────────────────────────
 
+export interface PersonalContextItem {
+  fact: string;
+  dateRelevant: string | null;
+}
+
 export interface ClassificationResult {
   summary: string;
   recommendedAction: string;
@@ -77,6 +102,7 @@ export interface ClassificationResult {
   replyDraft: string | null;
   taskTitle: string | null;
   updatedSenderSummary: string;
+  personalContext?: PersonalContextItem[];
 }
 
 interface ClassifyEmailOptions {
@@ -87,6 +113,7 @@ interface ClassifyEmailOptions {
   senderSummary?: string | null;
   feedbackContext?: string;
   briefingSourceEmails?: string[];
+  isNetworkContact?: boolean;
 }
 
 export async function classifyEmail(
@@ -151,6 +178,14 @@ export async function classifyEmail(
     systemParts.push(opts.feedbackContext);
   }
 
+  // Add personal context extraction for network contacts
+  if (opts.isNetworkContact) {
+    systemParts.push(``);
+    systemParts.push(
+      `PERSONAL CONTEXT EXTRACTION: This sender is in P.J.'s personal network. Extract any personal facts or life events mentioned in this email — kids, moves, milestones, hobbies, birthdays, trips, career changes, health events. Return them in the personal_context field. Only extract facts that are genuinely personal and useful for maintaining the relationship. Include date_relevant as an ISO date if the fact is time-bound.`,
+    );
+  }
+
   const system = systemParts.join("\n");
 
   // Truncate body to avoid blowing the context
@@ -190,6 +225,16 @@ export async function classifyEmail(
 
       const input = toolUse.input as Record<string, unknown>;
 
+      const personalContext: PersonalContextItem[] | undefined =
+        opts.isNetworkContact && Array.isArray(input.personal_context)
+          ? (input.personal_context as any[]).map((pc: any) => ({
+              fact: String(pc.fact ?? ""),
+              dateRelevant: pc.date_relevant
+                ? String(pc.date_relevant)
+                : null,
+            }))
+          : undefined;
+
       return {
         summary: (input.summary as string) ?? "",
         recommendedAction: (input.recommended_action as string) ?? "archive",
@@ -199,6 +244,7 @@ export async function classifyEmail(
         taskTitle: (input.task_title as string) || null,
         updatedSenderSummary:
           (input.updated_sender_summary as string) ?? "",
+        personalContext,
       };
     } catch (err: any) {
       lastError = err;
@@ -378,4 +424,92 @@ export async function generateReplyDraft(opts: {
   }
 
   throw lastError ?? new Error("Failed to generate reply draft");
+}
+
+// ── Follow-Up Draft Generation ──────────────────────────────────────────
+
+/**
+ * Generate a proactive follow-up email draft for a network contact.
+ * Called on-demand when the user clicks "Draft" on a follow-up card.
+ */
+export async function generateFollowUpDraft(opts: {
+  contactName: string;
+  contactEmail: string;
+  senderSummary: string | null;
+  reason: string;
+  contextSnapshot: string;
+  personalFacts: string[];
+  lastSubject: string | null;
+}): Promise<string> {
+  const systemParts = [
+    `You are drafting a proactive outreach email for P.J. Tanzillo.`,
+    `Write as P.J. — casual, direct, warm but not wordy. First-name basis. No "Dear" or "Best regards."`,
+    `This is a follow-up or check-in, not a reply to an incoming email. Make it feel natural and thoughtful, not transactional.`,
+    `If personal facts are provided, weave them in naturally — don't force them. A birthday wish or a "how'd the marathon go?" is great. Listing every fact you know is creepy.`,
+    `Keep it short — 2-4 sentences max.`,
+  ];
+
+  if (opts.senderSummary) {
+    systemParts.push(``);
+    systemParts.push(`RELATIONSHIP WITH ${opts.contactEmail}:`);
+    systemParts.push(opts.senderSummary);
+  }
+
+  const system = systemParts.join("\n");
+
+  const userParts = [
+    `CONTACT: ${opts.contactName} <${opts.contactEmail}>`,
+    `REASON FOR FOLLOW-UP: ${opts.reason.replace(/_/g, " ")}`,
+  ];
+
+  if (opts.contextSnapshot) {
+    userParts.push(`CONTEXT: ${opts.contextSnapshot}`);
+  }
+
+  if (opts.lastSubject) {
+    userParts.push(`LAST EMAIL THREAD: ${opts.lastSubject}`);
+  }
+
+  if (opts.personalFacts.length > 0) {
+    userParts.push(``);
+    userParts.push(`PERSONAL FACTS ABOUT ${opts.contactName}:`);
+    for (const fact of opts.personalFacts) {
+      userParts.push(`- ${fact}`);
+    }
+  }
+
+  userParts.push(``);
+  userParts.push(
+    `Write the email now. Just the body — no subject line, no greeting header, no signature block.`,
+  );
+
+  const userMessage = userParts.join("\n");
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 1024,
+        system,
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text",
+      );
+
+      return textBlock?.text ?? "Hey — just wanted to check in. Hope all is well!";
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) throw err;
+    }
+  }
+
+  throw lastError ?? new Error("Failed to generate follow-up draft");
 }
