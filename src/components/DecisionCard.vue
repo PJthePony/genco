@@ -14,15 +14,44 @@ const replyContext = ref('')
 const feedbackInput = ref(null)
 const replyContextInput = ref(null)
 
+// Reply review state — lets user see/edit draft before sending
+const reviewingReply = ref(false)
+const reviewDraft = ref('')
+const reviewTextarea = ref(null)
+
 const isReplyAction = computed(() =>
   pendingAlt.value?.action === 'Reply'
+)
+
+// True when the default action is Reply on an iMessage card
+const isMessageReply = computed(() =>
+  props.card.type === 'message' && props.card.actionKey === 'reply'
 )
 
 function showAlts() { showingAlts.value = true }
 function hideAlts() { showingAlts.value = false; pendingAlt.value = null }
 
 function approve(msg) {
+  // Intercept: if this is a message reply, show the review step first
+  if (isMessageReply.value && !reviewingReply.value) {
+    reviewDraft.value = props.card.replyDraft || ''
+    reviewingReply.value = true
+    nextTick(() => reviewTextarea.value?.focus())
+    return
+  }
   emit('approve', props.card.id, msg)
+}
+
+function confirmReply() {
+  // Update the card's replyDraft with the (possibly edited) text
+  props.card.replyDraft = reviewDraft.value.trim()
+  reviewingReply.value = false
+  emit('approve', props.card.id, 'Reply sent')
+}
+
+function cancelReview() {
+  reviewingReply.value = false
+  reviewDraft.value = ''
 }
 
 function selectAlt(action, msg) {
@@ -50,6 +79,19 @@ function submitFeedback() {
     replyContext: replyInstructions || null,
     timestamp: new Date().toISOString(),
   })
+  // If switching to Reply on a message card, show review step
+  if (pendingAlt.value.action === 'Reply' && props.card.type === 'message') {
+    props.card.actionKey = 'reply'
+    pendingAlt.value = null
+    feedbackText.value = ''
+    replyContext.value = ''
+    // The draft will be generated server-side via replyContext;
+    // for now show what we have or a placeholder
+    reviewDraft.value = props.card.replyDraft || ''
+    reviewingReply.value = true
+    nextTick(() => reviewTextarea.value?.focus())
+    return
+  }
   approve(pendingAlt.value.msg)
   pendingAlt.value = null
   feedbackText.value = ''
@@ -67,6 +109,17 @@ function skipFeedback() {
     replyContext: replyInstructions || null,
     timestamp: new Date().toISOString(),
   })
+  // If switching to Reply on a message card, show review step
+  if (pendingAlt.value.action === 'Reply' && props.card.type === 'message') {
+    props.card.actionKey = 'reply'
+    pendingAlt.value = null
+    feedbackText.value = ''
+    replyContext.value = ''
+    reviewDraft.value = props.card.replyDraft || ''
+    reviewingReply.value = true
+    nextTick(() => reviewTextarea.value?.focus())
+    return
+  }
   approve(pendingAlt.value.msg)
   pendingAlt.value = null
   feedbackText.value = ''
@@ -95,6 +148,26 @@ function skipFeedback() {
     <div v-if="card.type === 'message' && card.messageText" class="card-message-text">{{ card.messageText }}</div>
     <div class="card-summary">{{ card.summary }}</div>
 
+    <!-- Reply review step — shows draft before sending -->
+    <div v-if="reviewingReply" class="reply-review">
+      <div class="review-label">Review reply to {{ card.sender }}</div>
+      <textarea
+        ref="reviewTextarea"
+        v-model="reviewDraft"
+        class="review-textarea"
+        rows="3"
+        placeholder="Type your reply…"
+      />
+      <div class="review-actions">
+        <button class="btn btn-send-reply" :disabled="!reviewDraft.trim()" @click="confirmReply">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Send
+        </button>
+        <button class="btn btn-cancel-review" @click="cancelReview">Back</button>
+      </div>
+    </div>
+
+    <template v-if="!reviewingReply">
     <div class="rec-label">Genco recommends</div>
 
     <!-- Default actions -->
@@ -171,6 +244,7 @@ function skipFeedback() {
         </div>
       </form>
     </div>
+    </template>
   </div>
 </template>
 
@@ -541,6 +615,91 @@ function skipFeedback() {
 }
 
 .btn-feedback-skip:hover { color: var(--color-text-secondary); }
+
+/* ── Reply Review Step ── */
+.reply-review {
+  animation: fadeIn 0.15s ease;
+}
+
+.review-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.review-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+  outline: none;
+  transition: border-color var(--transition-fast);
+  resize: vertical;
+  min-height: 60px;
+  max-height: 200px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.review-textarea:focus {
+  border-color: var(--color-accent-border);
+}
+
+.review-textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.btn-send-reply {
+  padding: 8px 18px;
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  background: #34C759;
+  color: #fff;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-send-reply:hover:not(:disabled) { background: #2db84d; }
+.btn-send-reply:active:not(:disabled) { transform: scale(0.98); }
+.btn-send-reply:disabled { opacity: 0.4; cursor: default; }
+
+.btn-send-reply svg {
+  display: inline-block;
+  vertical-align: -1px;
+}
+
+.btn-cancel-review {
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.btn-cancel-review:hover { color: var(--color-text-secondary); }
 
 @media (min-width: 641px) {
   .card { padding: 20px; }

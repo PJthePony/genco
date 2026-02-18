@@ -268,8 +268,8 @@ async function ingestMessages() {
 
 async function processOutbound() {
   try {
-    const data = await apiGet("/messages/outbound");
-    const pending = data.messages || [];
+    const data = await apiGet(`/messages/outbound?userId=${USER_ID}`);
+    const pending = data.items || [];
 
     if (pending.length === 0) return;
 

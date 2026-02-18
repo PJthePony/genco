@@ -39,6 +39,15 @@ function handleApprove(cardId, msg) {
   emit('approve', cardId, msg)
 }
 
+function handleQuickApprove(card) {
+  // iMessage replies need review — expand instead of quick-approving
+  if (card.type === 'message' && card.actionKey === 'reply') {
+    expandedCardId.value = card.id
+    return
+  }
+  emit('approve', card.id, card.actionMsg)
+}
+
 function handleSkip(cardId) {
   expandedCardId.value = null
   emit('skip', cardId)
@@ -79,6 +88,9 @@ function handleSkip(cardId) {
 
     <!-- Card list -->
     <div v-if="expanded" class="section-body">
+      <div v-if="section.count === 0" class="section-empty">
+        Nothing here right now.
+      </div>
       <template v-for="card in section.cards" :key="card.id">
         <div v-if="expandedCardId === card.id" class="expanded-card-wrapper">
           <button class="btn-collapse" @click="expandedCardId = null">
@@ -97,7 +109,7 @@ function handleSkip(cardId) {
           v-else
           :card="card"
           @expand="expandedCardId = card.id"
-          @quick-approve="$emit('approve', card.id, card.actionMsg)"
+          @quick-approve="handleQuickApprove(card)"
         />
       </template>
     </div>
@@ -265,4 +277,11 @@ function handleSkip(cardId) {
 }
 
 .btn-collapse:hover { color: var(--color-text-secondary); }
+
+.section-empty {
+  padding: 20px 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
 </style>

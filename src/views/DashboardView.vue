@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useFeedback } from '../composables/useFeedback'
 import { useGroupedQueue } from '../composables/useGroupedQueue'
@@ -17,38 +17,13 @@ import ToastNotification from '../components/ToastNotification.vue'
 
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
-const { sections, items: cards, loading, scanning, error, remaining, urgentCount, allCleared, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
+const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
 const { items: digestItems, fetchDigest } = useDigest()
 const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
 
-// ── Delayed section visibility ──
-// When the last card in a section is cleared, keep the section visible
-// for 400ms so the CompactRow's CSS exit animation can finish.
-const showActionSection = ref(false)
-const showArchiveSection = ref(false)
-let actionHideTimer = null
-let archiveHideTimer = null
-
-watch(() => actionSection.value?.count, (count) => {
-  clearTimeout(actionHideTimer)
-  if (count > 0) {
-    showActionSection.value = true
-  } else {
-    actionHideTimer = setTimeout(() => { showActionSection.value = false }, 400)
-  }
-}, { immediate: true })
-
-watch(() => archiveSection.value?.count, (count) => {
-  clearTimeout(archiveHideTimer)
-  if (count > 0) {
-    showArchiveSection.value = true
-  } else {
-    archiveHideTimer = setTimeout(() => { showArchiveSection.value = false }, 400)
-  }
-}, { immediate: true })
 
 // ── Toast ──
 const toastMessage = ref('')
@@ -331,7 +306,17 @@ async function handleBulkApprove(sectionKey) {
   const section = sections.value.find(s => s.key === sectionKey)
   if (!section || section.count === 0) return
 
-  const cardsToApprove = [...section.cards]
+  // Skip iMessage replies in bulk approve — those need individual review
+  const cardsToApprove = [...section.cards].filter(c =>
+    !(c.type === 'message' && c.actionKey === 'reply')
+  )
+  const skippedReplies = section.cards.length - cardsToApprove.length
+
+  if (cardsToApprove.length === 0) {
+    showToast(`${skippedReplies} message replies need individual review`)
+    return
+  }
+
   bulkProgress.value[sectionKey] = {
     active: true,
     completed: 0,
@@ -360,11 +345,11 @@ async function handleBulkApprove(sectionKey) {
 
   bulkProgress.value[sectionKey] = { active: false, completed: 0, total: 0 }
 
-  if (failCount === 0) {
-    showToast(`${successCount} items processed`)
-  } else {
-    showToast(`${successCount} done, ${failCount} failed`)
-  }
+  let msg = failCount === 0
+    ? `${successCount} items processed`
+    : `${successCount} done, ${failCount} failed`
+  if (skippedReplies > 0) msg += ` (${skippedReplies} replies need review)`
+  showToast(msg)
 }
 
 // ── Promote digest item to decision queue ──
@@ -435,8 +420,6 @@ onUnmounted(() => {
   document.removeEventListener('touchstart', onTouchStart)
   document.removeEventListener('touchmove', onTouchMove)
   document.removeEventListener('touchend', onTouchEnd)
-  clearTimeout(actionHideTimer)
-  clearTimeout(archiveHideTimer)
 })
 </script>
 
@@ -482,7 +465,7 @@ onUnmounted(() => {
 
       <!-- Action Items (replies + tasks) -->
       <ActionSection
-        v-if="showActionSection"
+        v-if="actionSection"
         :section="actionSection"
         :bulk-progress="bulkProgress['action']"
         @approve="approveCard"
@@ -494,7 +477,7 @@ onUnmounted(() => {
 
       <!-- Archive (low priority cleanup) -->
       <ActionSection
-        v-if="showArchiveSection"
+        v-if="archiveSection"
         :section="archiveSection"
         :bulk-progress="bulkProgress['archive']"
         @approve="approveCard"
@@ -503,16 +486,6 @@ onUnmounted(() => {
         @feedback="handleFeedback"
         @bulk-approve="handleBulkApprove"
       />
-
-      <div v-if="allCleared" class="empty-state visible">
-        <h2>All clear, Don.</h2>
-        <p>You've handled everything. Check Gmail drafts when you're ready.</p>
-      </div>
-
-      <div v-if="!loading && cards.length === 0 && !allCleared" class="empty-state visible">
-        <h2>Nothing here yet.</h2>
-        <p>Hit "Scan inbox" to pull in your unread emails.</p>
-      </div>
 
       <!-- Daily Digest -->
       <DailyDigest
@@ -689,23 +662,6 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  animation: fadeIn 0.4s ease;
-}
-
-.empty-state h2 {
-  font-size: 1.15rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: 6px;
-}
-
-.empty-state p {
-  font-size: 0.82rem;
-  color: var(--color-text-secondary);
-}
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(3px); }

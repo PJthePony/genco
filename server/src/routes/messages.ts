@@ -414,10 +414,8 @@ userRoutes.post("/:id/action", async (c) => {
   }
 });
 
-// Mount user-authenticated routes
-messageRoutes.route("/", userRoutes);
-
 // ── Outbound Messages (bridge-authenticated) ─────────────────────────────────
+// NOTE: Must be registered BEFORE userRoutes.route("/") which catches all paths
 
 // GET /messages/outbound — pending messages for the bridge to send
 messageRoutes.get("/outbound", bridgeAuth(), async (c) => {
@@ -468,3 +466,6 @@ messageRoutes.post("/outbound/:id/failed", bridgeAuth(), async (c) => {
 
   return c.json({ ok: true });
 });
+
+// Mount user-authenticated routes (must come AFTER bridge routes)
+messageRoutes.route("/", userRoutes);
