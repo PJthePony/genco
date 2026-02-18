@@ -16,7 +16,7 @@ const emit = defineEmits([
   'bulk-approve',
 ])
 
-const expanded = ref(props.section.defaultExpanded)
+const expanded = ref(props.section.count > 0 ? true : props.section.defaultExpanded)
 const expandedCardId = ref(null)
 
 function toggle() { expanded.value = !expanded.value }
@@ -121,7 +121,7 @@ function handleSkip(cardId) {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }

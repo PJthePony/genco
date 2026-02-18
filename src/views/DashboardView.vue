@@ -472,6 +472,14 @@ onUnmounted(() => {
         <button class="btn-retry" @click="fetchQueue">Retry</button>
       </div>
 
+      <!-- Daily Briefing -->
+      <DailyDigest
+        :items="digestItems"
+        @manage-sources="settingsOpen = true"
+        @promote="promoteDigestItem"
+        @open-email="openDigestEmail"
+      />
+
       <!-- Action Items (replies + tasks) -->
       <ActionSection
         v-if="actionSection"
@@ -494,15 +502,6 @@ onUnmounted(() => {
         @open-email="openEmail"
         @feedback="handleFeedback"
         @bulk-approve="handleBulkApprove"
-      />
-
-      <!-- Daily Digest -->
-      <DailyDigest
-        v-if="digestItems.length > 0"
-        :items="digestItems"
-        @manage-sources="settingsOpen = true"
-        @promote="promoteDigestItem"
-        @open-email="openDigestEmail"
       />
 
       <!-- Follow Up (proactive outreach) -->

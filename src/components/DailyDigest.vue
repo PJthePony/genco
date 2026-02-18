@@ -22,7 +22,7 @@ function toggle() { expanded.value = !expanded.value }
         </div>
         <div>
           <div class="briefing-digest-title">Daily Briefing</div>
-          <div class="briefing-digest-subtitle">{{ items.length }} emails summarized &amp; auto-archived</div>
+          <div class="briefing-digest-subtitle">{{ items.length > 0 ? `${items.length} emails summarized & auto-archived` : 'No emails yet today' }}</div>
         </div>
       </div>
       <div class="briefing-digest-right">
@@ -31,22 +31,27 @@ function toggle() { expanded.value = !expanded.value }
       </div>
     </div>
     <div class="briefing-digest-body">
-      <div class="briefing-digest-items">
-        <div class="briefing-item" v-for="(item, i) in items" :key="item.id || i">
-          <div class="briefing-item-header">
-            <span class="briefing-item-source">{{ item.source }}</span>
-            <span class="briefing-item-tag" :class="item.tagClass">{{ item.tag }}</span>
-            <span class="briefing-item-time">{{ timeAgo(item.receivedAt) }}</span>
-            <button class="briefing-item-view" @click.stop="$emit('open-email', item.id)">View</button>
-            <button class="briefing-item-action" @click.stop="$emit('promote', item.id)">Action</button>
+      <div v-if="items.length === 0" class="briefing-digest-empty">
+        Nothing here right now.
+      </div>
+      <template v-else>
+        <div class="briefing-digest-items">
+          <div class="briefing-item" v-for="(item, i) in items" :key="item.id || i">
+            <div class="briefing-item-header">
+              <span class="briefing-item-source">{{ item.source }}</span>
+              <span class="briefing-item-tag" :class="item.tagClass">{{ item.tag }}</span>
+              <span class="briefing-item-time">{{ timeAgo(item.receivedAt) }}</span>
+              <button class="briefing-item-view" @click.stop="$emit('open-email', item.id)">View</button>
+              <button class="briefing-item-action" @click.stop="$emit('promote', item.id)">Action</button>
+            </div>
+            <div class="briefing-item-summary">{{ item.summary }}</div>
           </div>
-          <div class="briefing-item-summary">{{ item.summary }}</div>
         </div>
-      </div>
-      <div class="briefing-digest-footer">
-        <span class="briefing-footer-note">Originals auto-archived</span>
-        <button class="briefing-footer-action" @click.stop="$emit('manage-sources')">Manage sources</button>
-      </div>
+        <div class="briefing-digest-footer">
+          <span class="briefing-footer-note">Originals auto-archived</span>
+          <button class="briefing-footer-action" @click.stop="$emit('manage-sources')">Manage sources</button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -56,7 +61,7 @@ function toggle() { expanded.value = !expanded.value }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  margin-bottom: 24px;
+  margin-bottom: 10px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
@@ -261,4 +266,12 @@ function toggle() { expanded.value = !expanded.value }
 }
 
 .briefing-footer-action:hover { color: var(--color-text-secondary); background: var(--color-bg); }
+
+.briefing-digest-empty {
+  padding: 20px 18px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
+}
 </style>
