@@ -17,7 +17,7 @@ const app = new Hono();
 app.onError((err, c) => {
   console.error("Unhandled error:", err);
   return c.json(
-    { error: "Internal server error" },
+    { error: err.message || "Internal server error" },
     500,
   );
 });

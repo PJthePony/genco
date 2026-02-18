@@ -82,31 +82,39 @@ networkRoutes.post("/", async (c) => {
 
   const body = parsed.data;
 
-  const [contact] = await db
-    .insert(networkContacts)
-    .values({
-      userId: user.sub,
-      email: body.email.toLowerCase(),
-      displayName: body.displayName,
-      company: body.company ?? null,
-      title: body.title ?? null,
-      notes: body.notes ?? null,
-    })
-    .onConflictDoNothing()
-    .returning();
+  try {
+    const [contact] = await db
+      .insert(networkContacts)
+      .values({
+        userId: user.sub,
+        email: body.email.toLowerCase(),
+        displayName: body.displayName,
+        company: body.company ?? null,
+        title: body.title ?? null,
+        notes: body.notes ?? null,
+      })
+      .onConflictDoNothing()
+      .returning();
 
-  if (!contact) {
-    // Already exists — return the existing one
-    const existing = await db.query.networkContacts.findFirst({
-      where: and(
-        eq(networkContacts.userId, user.sub),
-        eq(networkContacts.email, body.email.toLowerCase()),
-      ),
-    });
-    return c.json({ ok: true, contact: existing, alreadyExists: true });
+    if (!contact) {
+      // Already exists — return the existing one
+      const existing = await db.query.networkContacts.findFirst({
+        where: and(
+          eq(networkContacts.userId, user.sub),
+          eq(networkContacts.email, body.email.toLowerCase()),
+        ),
+      });
+      return c.json({ ok: true, contact: existing, alreadyExists: true });
+    }
+
+    return c.json({ ok: true, contact });
+  } catch (err) {
+    console.error("[Network] Failed to add contact:", err);
+    return c.json(
+      { error: `Database error: ${(err as Error).message}` },
+      500,
+    );
   }
-
-  return c.json({ ok: true, contact });
 });
 
 // POST /network/batch — bulk add contacts
