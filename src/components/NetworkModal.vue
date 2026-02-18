@@ -187,10 +187,6 @@ async function submitFact() {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add contact
             </button>
-            <button class="btn-seed" @click="handleSeed" :disabled="seeding" v-if="!adding && contacts.length === 0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              {{ seeding ? 'Searching...' : 'Seed from Gmail' }}
-            </button>
           </div>
 
           <!-- Add form -->
@@ -250,7 +246,15 @@ async function submitFact() {
 
         <!-- Seed/Discover tab -->
         <div v-if="activeTab === 'seed'" class="modal-body">
-          <div v-if="seeding" class="seed-loading">
+          <div v-if="!seeding && suggestions.length === 0" class="seed-start">
+            <p class="seed-start-text">Scan your sent mail to find the people you email most.</p>
+            <button class="btn-seed" @click="handleSeed" :disabled="seeding">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Seed from Gmail
+            </button>
+          </div>
+
+          <div v-else-if="seeding" class="seed-loading">
             <div class="seed-progress-info">
               <span class="seed-spinner"></span>
               <span>{{ seedProgress.phase || 'Starting...' }}</span>
@@ -265,10 +269,6 @@ async function submitFact() {
               <span>{{ seedProgress.fetched?.toLocaleString() }} / {{ seedProgress.limit?.toLocaleString() }} emails</span>
               <span v-if="seedProgress.contacts">{{ seedProgress.contacts }} contacts found</span>
             </div>
-          </div>
-
-          <div v-else-if="suggestions.length === 0" class="empty-contacts">
-            <p>Click "Seed from Gmail" to discover your most-emailed contacts.</p>
           </div>
 
           <div v-else>
@@ -573,6 +573,20 @@ async function submitFact() {
 .fact-form-actions { display: flex; gap: 6px; width: 100%; }
 
 /* Seed tab */
+.seed-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 30px 10px;
+}
+
+.seed-start-text {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
 .seed-loading {
   display: flex;
   flex-direction: column;
