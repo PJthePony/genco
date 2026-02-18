@@ -1,6 +1,9 @@
 import { ref, computed } from 'vue'
 import { api } from './useApi'
 import { avatarColor, getInitials, daysAgo } from '../lib/formatters'
+import { supabase } from '../lib/supabase'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 // Module-scope state (singleton)
 const contacts = ref([])
@@ -8,6 +11,7 @@ const followUps = ref([])
 const suggestions = ref([])
 const loading = ref(false)
 const seeding = ref(false)
+const seedProgress = ref({ fetched: 0, limit: 2000, contacts: 0, phase: '' })
 
 const REASON_LABELS = {
   ball_in_your_court: 'Ball in your court',
@@ -143,10 +147,57 @@ export function useNetwork() {
 
   async function seedContacts() {
     seeding.value = true
+    seedProgress.value = { fetched: 0, limit: 2000, contacts: 0, phase: 'Starting...' }
+    suggestions.value = []
+
     try {
-      const data = await api('/network/seed', { method: 'POST' })
-      suggestions.value = data.suggestions || []
-      return data.suggestions
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+
+      const res = await fetch(`${API_URL}/network/seed`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `API error ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        let eventType = ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7)
+          } else if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6))
+            if (eventType === 'progress') {
+              seedProgress.value = data
+            } else if (eventType === 'done') {
+              suggestions.value = data.suggestions || []
+            } else if (eventType === 'error') {
+              throw new Error(data.message)
+            }
+          }
+        }
+      }
+
+      return suggestions.value
     } catch (err) {
       console.error('Failed to seed contacts:', err)
       throw err
@@ -199,6 +250,7 @@ export function useNetwork() {
     suggestions,
     loading,
     seeding,
+    seedProgress,
     followUpCount,
     fetchContacts,
     fetchFollowUps,

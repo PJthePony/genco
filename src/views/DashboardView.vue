@@ -250,40 +250,6 @@ function handleLogout() {
   signOut()
 }
 
-// ── Sync Archives ──
-const syncing = ref(false)
-
-async function syncArchives() {
-  syncing.value = true
-  try {
-    const result = await api('/queue/sync-archives', { method: 'POST' })
-    showToast(`Archived ${result.archived} of ${result.total} in Gmail`)
-  } catch (err) {
-    showToast(err.message || 'Sync failed')
-  } finally {
-    syncing.value = false
-  }
-}
-
-// ── Reprocess historical emails ──
-const reprocessing = ref(false)
-
-async function reprocessEmails() {
-  reprocessing.value = true
-  try {
-    const result = await api('/queue/reprocess', { method: 'POST' })
-    if (result.requeued > 0) {
-      showToast(`${result.requeued} emails requeued — scan to classify`)
-    } else {
-      showToast('No historical emails to reprocess')
-    }
-  } catch (err) {
-    showToast(err.message || 'Reprocess failed')
-  } finally {
-    reprocessing.value = false
-  }
-}
-
 // ── Bulk Approve ──
 const bulkProgress = ref({})
 
@@ -426,16 +392,6 @@ onUnmounted(() => {
           <svg v-if="!scanning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           <span v-if="scanning" class="scan-spinner"></span>
           {{ scanning ? 'Scanning…' : 'Scan inbox' }}
-        </button>
-        <button class="btn-scan" :class="{ scanning: syncing }" @click="syncArchives" :disabled="syncing">
-          <svg v-if="!syncing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span v-if="syncing" class="scan-spinner"></span>
-          {{ syncing ? 'Syncing…' : 'Sync archives' }}
-        </button>
-        <button class="btn-scan" :class="{ scanning: reprocessing }" @click="reprocessEmails" :disabled="reprocessing">
-          <svg v-if="!reprocessing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-          <span v-if="reprocessing" class="scan-spinner"></span>
-          {{ reprocessing ? 'Reprocessing…' : 'Reprocess' }}
         </button>
       </div>
 

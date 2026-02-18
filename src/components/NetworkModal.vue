@@ -14,6 +14,7 @@ const {
   suggestions,
   loading,
   seeding,
+  seedProgress,
   fetchContacts,
   addContact,
   removeContact,
@@ -186,7 +187,7 @@ async function submitFact() {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add contact
             </button>
-            <button class="btn-seed" @click="handleSeed" :disabled="seeding" v-if="!adding">
+            <button class="btn-seed" @click="handleSeed" :disabled="seeding" v-if="!adding && contacts.length === 0">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               {{ seeding ? 'Searching...' : 'Seed from Gmail' }}
             </button>
@@ -250,8 +251,20 @@ async function submitFact() {
         <!-- Seed/Discover tab -->
         <div v-if="activeTab === 'seed'" class="modal-body">
           <div v-if="seeding" class="seed-loading">
-            <span class="seed-spinner"></span>
-            Scanning your sent mail for top contacts...
+            <div class="seed-progress-info">
+              <span class="seed-spinner"></span>
+              <span>{{ seedProgress.phase || 'Starting...' }}</span>
+            </div>
+            <div class="seed-progress-bar">
+              <div
+                class="seed-progress-fill"
+                :style="{ width: `${Math.min(100, (seedProgress.fetched / seedProgress.limit) * 100)}%` }"
+              ></div>
+            </div>
+            <div class="seed-progress-stats">
+              <span>{{ seedProgress.fetched?.toLocaleString() }} / {{ seedProgress.limit?.toLocaleString() }} emails</span>
+              <span v-if="seedProgress.contacts">{{ seedProgress.contacts }} contacts found</span>
+            </div>
           </div>
 
           <div v-else-if="suggestions.length === 0" class="empty-contacts">
@@ -562,12 +575,40 @@ async function submitFact() {
 /* Seed tab */
 .seed-loading {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 30px 10px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.seed-progress-info {
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 40px 10px;
+}
+
+.seed-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--color-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.seed-progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.seed-progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
   color: var(--color-text-muted);
-  font-size: 0.78rem;
 }
 
 .seed-spinner {

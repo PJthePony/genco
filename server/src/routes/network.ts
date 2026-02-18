@@ -547,7 +547,9 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
 
 // ── Seed Flow ───────────────────────────────────────────────────────────────
 
-// POST /network/seed — discover top contacts from Gmail sent history
+// POST /network/seed — discover top contacts from Gmail sent history (SSE)
+const SEED_LIMIT = 2000;
+
 networkRoutes.post("/seed", async (c) => {
   const user = c.get("user");
 
@@ -574,7 +576,6 @@ networkRoutes.post("/seed", async (c) => {
 
   const userEmail = connection.gmailAddress.toLowerCase();
 
-  // Search sent messages for recipient frequency
   const { google } = await import("googleapis");
   const authClient = new google.auth.OAuth2(
     env.GOOGLE_CLIENT_ID,
@@ -590,114 +591,153 @@ networkRoutes.post("/seed", async (c) => {
   });
   const gmail = google.gmail({ version: "v1", auth: authClient });
 
-  const recipientCounts = new Map<
-    string,
-    { email: string; name: string; count: number }
-  >();
-  let pageToken: string | undefined;
-  let totalFetched = 0;
+  // Stream progress via SSE
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: string, data: any) => {
+        controller.enqueue(
+          new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+        );
+      };
 
-  // Paginate through sent messages, up to 500
-  while (totalFetched < 500) {
-    const listRes: any = await gmail.users.messages.list({
-      userId: "me",
-      q: "in:sent",
-      maxResults: Math.min(100, 500 - totalFetched),
-      pageToken,
-    });
+      try {
+        const recipientCounts = new Map<
+          string,
+          { email: string; name: string; count: number }
+        >();
+        let pageToken: string | undefined;
+        let totalFetched = 0;
 
-    const messages = listRes.data.messages ?? [];
-    if (messages.length === 0) break;
+        send("progress", { fetched: 0, limit: SEED_LIMIT, phase: "Scanning sent mail..." });
 
-    // Fetch To headers in parallel (batches of 20)
-    for (let i = 0; i < messages.length; i += 20) {
-      const batch = messages.slice(i, i + 20);
-      const details = await Promise.all(
-        batch.map((msg: any) =>
-          gmail.users.messages
-            .get({
-              userId: "me",
-              id: msg.id,
-              format: "metadata",
-              metadataHeaders: ["To", "From"],
-            })
-            .catch(() => null),
-        ),
-      );
+        while (totalFetched < SEED_LIMIT) {
+          const listRes: any = await gmail.users.messages.list({
+            userId: "me",
+            q: "in:sent",
+            maxResults: Math.min(100, SEED_LIMIT - totalFetched),
+            pageToken,
+          });
 
-      for (const detail of details) {
-        if (!detail?.data?.payload?.headers) continue;
+          const messages = listRes.data.messages ?? [];
+          if (messages.length === 0) break;
 
-        const toHeader = detail.data.payload.headers.find(
-          (h: any) => h.name === "To",
-        )?.value;
-        if (!toHeader) continue;
+          // Fetch To headers in parallel (batches of 20)
+          for (let i = 0; i < messages.length; i += 20) {
+            const batch = messages.slice(i, i + 20);
+            const details = await Promise.all(
+              batch.map((msg: any) =>
+                gmail.users.messages
+                  .get({
+                    userId: "me",
+                    id: msg.id,
+                    format: "metadata",
+                    metadataHeaders: ["To", "From"],
+                  })
+                  .catch(() => null),
+              ),
+            );
 
-        // Parse To header — may contain multiple recipients
-        const recipients = toHeader.split(",").map((r: string) => r.trim());
-        for (const recipient of recipients) {
-          const emailMatch = recipient.match(/<([^>]+)>/);
-          const email = (emailMatch?.[1] ?? recipient).toLowerCase().trim();
+            for (const detail of details) {
+              if (!detail?.data?.payload?.headers) continue;
 
-          // Skip own email, noreply, notifications
-          if (
-            email === userEmail ||
-            email.includes("noreply") ||
-            email.includes("no-reply") ||
-            email.includes("notifications") ||
-            email.includes("mailer-daemon") ||
-            email.includes("unsubscribe") ||
-            !email.includes("@")
-          )
-            continue;
+              const toHeader = detail.data.payload.headers.find(
+                (h: any) => h.name === "To",
+              )?.value;
+              if (!toHeader) continue;
 
-          const nameMatch = recipient.match(/^([^<]+)</);
-          const name = nameMatch?.[1]?.trim()?.replace(/"/g, "") ?? "";
+              const recipients = toHeader.split(",").map((r: string) => r.trim());
+              for (const recipient of recipients) {
+                const emailMatch = recipient.match(/<([^>]+)>/);
+                const email = (emailMatch?.[1] ?? recipient).toLowerCase().trim();
 
-          const existing = recipientCounts.get(email);
-          if (existing) {
-            existing.count++;
-            if (!existing.name && name) existing.name = name;
-          } else {
-            recipientCounts.set(email, { email, name, count: 1 });
+                if (
+                  email === userEmail ||
+                  email.includes("noreply") ||
+                  email.includes("no-reply") ||
+                  email.includes("notifications") ||
+                  email.includes("mailer-daemon") ||
+                  email.includes("unsubscribe") ||
+                  !email.includes("@")
+                )
+                  continue;
+
+                const nameMatch = recipient.match(/^([^<]+)</);
+                const name = nameMatch?.[1]?.trim()?.replace(/"/g, "") ?? "";
+
+                const existing = recipientCounts.get(email);
+                if (existing) {
+                  existing.count++;
+                  if (!existing.name && name) existing.name = name;
+                } else {
+                  recipientCounts.set(email, { email, name, count: 1 });
+                }
+              }
+            }
+
+            // Send progress after each batch of 20
+            totalFetched += batch.length;
+            send("progress", {
+              fetched: totalFetched,
+              limit: SEED_LIMIT,
+              contacts: recipientCounts.size,
+              phase: `Scanned ${totalFetched.toLocaleString()} sent emails...`,
+            });
           }
+
+          pageToken = listRes.data.nextPageToken;
+          if (!pageToken) break;
         }
+
+        send("progress", {
+          fetched: totalFetched,
+          limit: SEED_LIMIT,
+          contacts: recipientCounts.size,
+          phase: "Preparing results...",
+        });
+
+        // Sort by frequency, take top 30
+        const sorted = [...recipientCounts.values()]
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 30);
+
+        // Exclude already-added contacts
+        const existingContacts = await db.query.networkContacts.findMany({
+          where: eq(networkContacts.userId, user.sub),
+          columns: { email: true },
+        });
+        const existingSet = new Set(existingContacts.map((nc) => nc.email));
+
+        // Enrich with sender summaries
+        const allSummaries = await db.query.senderSummaries.findMany({
+          where: eq(senderSummaries.userId, user.sub),
+        });
+        const summaryMap = new Map(
+          allSummaries.map((s) => [s.senderEmail, s.summary]),
+        );
+
+        const suggestions = sorted
+          .filter((r) => !existingSet.has(r.email))
+          .map((r) => ({
+            email: r.email,
+            displayName: r.name || r.email.split("@")[0],
+            messageCount: r.count,
+            senderSummary: summaryMap.get(r.email) ?? null,
+          }));
+
+        send("done", { suggestions, totalScanned: totalFetched });
+      } catch (err: any) {
+        send("error", { message: err.message ?? "Seed failed" });
+      } finally {
+        controller.close();
       }
-    }
-
-    totalFetched += messages.length;
-    pageToken = listRes.data.nextPageToken;
-    if (!pageToken) break;
-  }
-
-  // Sort by frequency, take top 30
-  const sorted = [...recipientCounts.values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 30);
-
-  // Exclude already-added contacts
-  const existingContacts = await db.query.networkContacts.findMany({
-    where: eq(networkContacts.userId, user.sub),
-    columns: { email: true },
+    },
   });
-  const existingSet = new Set(existingContacts.map((c) => c.email));
 
-  // Enrich with sender summaries
-  const allSummaries = await db.query.senderSummaries.findMany({
-    where: eq(senderSummaries.userId, user.sub),
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
   });
-  const summaryMap = new Map(
-    allSummaries.map((s) => [s.senderEmail, s.summary]),
-  );
-
-  const suggestions = sorted
-    .filter((r) => !existingSet.has(r.email))
-    .map((r) => ({
-      email: r.email,
-      displayName: r.name || r.email.split("@")[0],
-      messageCount: r.count,
-      senderSummary: summaryMap.get(r.email) ?? null,
-    }));
-
-  return c.json({ ok: true, suggestions });
 });
