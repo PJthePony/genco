@@ -16,6 +16,7 @@ import {
   archiveMessage,
   type GoogleTokens,
 } from "../lib/gmail.js";
+import { isNoiseEmail } from "../lib/noise.js";
 
 export interface ClassifyResult {
   processed: number;
@@ -82,8 +83,9 @@ export async function classifyPendingEmails(
     console.warn("Could not load network contacts:", (err as Error).message);
   }
 
-  // Get Gmail tokens for sender history lookups
+  // Get Gmail tokens and user email for sender history lookups + noise filtering
   const gmailTokens = await getGmailTokens(userId);
+  const userEmail = await getUserEmail(userId);
 
   // Track which senders we've already built history for in this batch
   const historyBuilt = new Set<string>();
@@ -243,6 +245,65 @@ export async function classifyPendingEmails(
         );
       }
 
+      // Auto-add sender to network if the AI classified this as needing
+      // a personal reply or task — meaning a real person is asking for P.J.'s input.
+      // This replaces the old scanner-based auto-add which had no AI signal.
+      const senderLower = email.fromEmail.toLowerCase();
+      const isBriefingSender = briefingSourceEmails.some(
+        (b) => b.toLowerCase() === senderLower,
+      );
+      if (
+        (result.recommendedAction === "reply" || result.recommendedAction === "add_task") &&
+        !networkContactMap.has(senderLower) &&
+        !isBriefingSender &&
+        !isNoiseEmail(senderLower, userEmail ?? undefined) &&
+        senderLower !== userEmail
+      ) {
+        try {
+          const [newContact] = await db
+            .insert(networkContacts)
+            .values({
+              userId,
+              email: senderLower,
+              displayName: email.fromName || senderLower.split("@")[0],
+              lastContactAt: email.receivedAt,
+              lastDirection: "received",
+              threadStatus: "awaiting_your_reply",
+              gmailThreadId: email.gmailThreadId,
+              lastSubject: email.subject,
+            })
+            .onConflictDoNothing()
+            .returning();
+
+          if (newContact) {
+            networkContactMap.set(senderLower, newContact.id);
+            console.log(
+              `Auto-added ${senderLower} to network (reason: ${result.recommendedAction})`,
+            );
+
+            // Persist personal facts for the newly-added contact
+            if (result.personalContext?.length) {
+              for (const pc of result.personalContext) {
+                try {
+                  await db.insert(contactContext).values({
+                    networkContactId: newContact.id,
+                    fact: pc.fact,
+                    dateRelevant: pc.dateRelevant
+                      ? new Date(pc.dateRelevant)
+                      : null,
+                    sourceSubject: email.subject,
+                  });
+                } catch (err) {
+                  // Non-fatal
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to auto-add network contact ${senderLower}:`, err);
+        }
+      }
+
       // Auto-process briefing items — they go straight to the digest,
       // not the decision queue. User doesn't need to approve these.
       if (result.recommendedAction === "briefing") {
@@ -394,6 +455,17 @@ async function getGmailTokens(userId: string): Promise<GoogleTokens | null> {
   }
 
   return tokens;
+}
+
+/**
+ * Get the user's Gmail address for noise-email filtering.
+ */
+async function getUserEmail(userId: string): Promise<string | null> {
+  const connection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, userId),
+    columns: { gmailAddress: true },
+  });
+  return connection?.gmailAddress?.toLowerCase() ?? null;
 }
 
 /**

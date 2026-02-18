@@ -184,36 +184,12 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
         inserted++;
       }
 
-      // Auto-add sender to network contacts if not already there
-      // (only for real emails entering the queue, not briefing/historical/newsletters)
-      const senderEmailLower = email.fromEmail.toLowerCase();
-      const hasListUnsub = !!(email.listUnsubscribe);
-      if (!networkEmailMap.has(senderEmailLower) && !isHistorical && !isBriefingSource && !hasListUnsub && !isNoiseEmail(senderEmailLower, userEmail)) {
-        try {
-          const [newContact] = await db
-            .insert(networkContacts)
-            .values({
-              userId,
-              email: senderEmailLower,
-              displayName: email.fromName || senderEmailLower.split("@")[0],
-              lastContactAt: email.receivedAt,
-              lastDirection: userAlreadyReplied ? "sent" : "received",
-              threadStatus: userAlreadyReplied ? "awaiting_their_reply" : "awaiting_your_reply",
-              gmailThreadId: email.gmailThreadId,
-              lastSubject: email.subject,
-            })
-            .onConflictDoNothing()
-            .returning();
-          if (newContact) {
-            networkEmailMap.set(senderEmailLower, newContact.id);
-          }
-        } catch (err) {
-          // Non-fatal — just skip auto-add
-          console.warn(`Failed to auto-add network contact ${senderEmailLower}:`, err);
-        }
-      }
+      // NOTE: Auto-add to network_contacts is handled post-classification
+      // in classifier.ts, where the AI signal (recommendedAction) determines
+      // whether the sender belongs in the network.
 
-      // Update network contact tracking if sender is in the network
+      // Update network contact tracking if sender is already in the network
+      const senderEmailLower = email.fromEmail.toLowerCase();
       const networkContactId = networkEmailMap.get(senderEmailLower);
       if (networkContactId && !isHistorical) {
         try {
@@ -364,8 +340,11 @@ async function detectFollowUps(userId: string): Promise<number> {
       }
     }
 
-    // 2. Went cold: last contact > 14 days ago, any direction
-    if (contact.lastContactAt < fourteenDaysAgo) {
+    // 2. Went cold: P.J. sent last but they haven't responded in 14+ days
+    if (
+      contact.threadStatus === "awaiting_their_reply" &&
+      contact.lastContactAt < fourteenDaysAgo
+    ) {
       const key = `${contact.id}:went_cold`;
       if (!existingKeys.has(key)) {
         const daysAgo = Math.floor((now - lastContactTime) / (24 * 60 * 60 * 1000));
@@ -373,7 +352,7 @@ async function detectFollowUps(userId: string): Promise<number> {
           networkContactId: contact.id,
           reason: "went_cold",
           suggestedAction: "nudge",
-          contextSnapshot: `Last heard from ${contact.displayName} ${daysAgo}d ago: "${contact.lastSubject || "(no subject)"}"`,
+          contextSnapshot: `${contact.displayName} hasn't replied in ${daysAgo}d — last thread: "${contact.lastSubject || "(no subject)"}"`,
         });
         existingKeys.add(key);
         created++;
