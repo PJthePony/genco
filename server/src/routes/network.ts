@@ -23,6 +23,7 @@ import {
   buildSenderSummaryFromHistory,
   generateFollowUpDraft,
 } from "../lib/claude.js";
+import { isNoiseEmail } from "../lib/noise.js";
 
 export const networkRoutes = new Hono<{ Variables: { user: AuthUser } }>();
 
@@ -30,44 +31,6 @@ networkRoutes.use("*", authMiddleware);
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Check if an email address looks like a newsletter / mass-email sender. */
-function isNoiseEmail(email: string, userEmail?: string): boolean {
-  if (!email.includes("@")) return true;
-  if (userEmail && email === userEmail) return true;
-
-  const local = email.split("@")[0] ?? "";
-  const domain = email.split("@")[1] ?? "";
-
-  // Common noreply/system senders
-  if (
-    email.includes("noreply") ||
-    email.includes("no-reply") ||
-    email.includes("notifications") ||
-    email.includes("mailer-daemon") ||
-    email.includes("unsubscribe")
-  ) return true;
-
-  // Common mass-email sender local parts
-  const massLocalParts = new Set([
-    "info", "hello", "team", "support", "news", "newsletter",
-    "updates", "marketing", "digest", "reply", "bounce",
-  ]);
-  if (massLocalParts.has(local)) return true;
-
-  // Common mass-email domain prefixes (e.g. mail.company.com, em.company.com)
-  if (
-    domain.startsWith("mail.") ||
-    domain.startsWith("email.") ||
-    domain.startsWith("em.") ||
-    domain.startsWith("e.") ||
-    domain.startsWith("bounce.") ||
-    domain.startsWith("send.") ||
-    domain.startsWith("post.")
-  ) return true;
-
-  return false;
-}
 
 // ── Network Contacts CRUD ───────────────────────────────────────────────────
 

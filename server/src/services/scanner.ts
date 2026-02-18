@@ -16,6 +16,7 @@ import {
   type GoogleTokens,
   type RawEmail,
 } from "../lib/gmail.js";
+import { isNoiseEmail } from "../lib/noise.js";
 
 export interface ScanResult {
   fetched: number;
@@ -187,7 +188,7 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
       // (only for real emails entering the queue, not briefing/historical/newsletters)
       const senderEmailLower = email.fromEmail.toLowerCase();
       const hasListUnsub = !!(email.listUnsubscribe);
-      if (!networkEmailMap.has(senderEmailLower) && !isHistorical && !isBriefingSource && !hasListUnsub) {
+      if (!networkEmailMap.has(senderEmailLower) && !isHistorical && !isBriefingSource && !hasListUnsub && !isNoiseEmail(senderEmailLower, userEmail)) {
         try {
           const [newContact] = await db
             .insert(networkContacts)
@@ -339,6 +340,8 @@ async function detectFollowUps(userId: string): Promise<number> {
     // Skip contacts with conversation_ended status
     if (contact.threadStatus === "conversation_ended") continue;
     if (!contact.lastContactAt) continue;
+    // Skip noise / mass-email senders (defense-in-depth)
+    if (isNoiseEmail(contact.email)) continue;
 
     const lastContactTime = contact.lastContactAt.getTime();
 
