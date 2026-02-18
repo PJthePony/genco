@@ -8,6 +8,7 @@ import {
   followUpQueue,
   senderSummaries,
   gmailConnections,
+  emailQueue,
 } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { env } from "../config.js";
@@ -413,7 +414,7 @@ networkRoutes.post("/seed", async (c) => {
                     userId: "me",
                     id: msg.id,
                     format: "metadata",
-                    metadataHeaders: ["To", "From"],
+                    metadataHeaders: ["To", "Cc", "From"],
                   })
                   .catch(() => null),
               ),
@@ -425,9 +426,14 @@ networkRoutes.post("/seed", async (c) => {
               const toHeader = detail.data.payload.headers.find(
                 (h: any) => h.name === "To",
               )?.value;
-              if (!toHeader) continue;
+              const ccHeader = detail.data.payload.headers.find(
+                (h: any) => h.name === "Cc",
+              )?.value;
 
-              const recipients = toHeader.split(",").map((r: string) => r.trim());
+              const allRecipients = [toHeader, ccHeader].filter(Boolean).join(",");
+              if (!allRecipients) continue;
+
+              const recipients = allRecipients.split(",").map((r: string) => r.trim());
               for (const recipient of recipients) {
                 const emailMatch = recipient.match(/<([^>]+)>/);
                 const email = (emailMatch?.[1] ?? recipient).toLowerCase().trim();
@@ -474,13 +480,61 @@ networkRoutes.post("/seed", async (c) => {
           fetched: totalFetched,
           limit: SEED_LIMIT,
           contacts: recipientCounts.size,
+          phase: "Checking received emails...",
+        });
+
+        // Also include senders from received emails (from email_queue DB)
+        // This catches contacts who email P.J. but he hasn't sent to frequently
+        try {
+          const receivedRows = await db
+            .select({
+              email: emailQueue.fromEmail,
+              name: emailQueue.fromName,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(emailQueue)
+            .where(eq(emailQueue.userId, user.sub))
+            .groupBy(emailQueue.fromEmail, emailQueue.fromName);
+
+          for (const row of receivedRows) {
+            const email = row.email.toLowerCase().trim();
+            if (
+              email === userEmail ||
+              email.includes("noreply") ||
+              email.includes("no-reply") ||
+              email.includes("notifications") ||
+              email.includes("mailer-daemon") ||
+              email.includes("unsubscribe") ||
+              !email.includes("@")
+            ) continue;
+
+            const existing = recipientCounts.get(email);
+            if (existing) {
+              existing.count += row.count;
+              if (!existing.name && row.name) existing.name = row.name;
+            } else {
+              recipientCounts.set(email, {
+                email,
+                name: row.name || "",
+                count: row.count,
+              });
+            }
+          }
+        } catch (err) {
+          // Non-fatal — still return sent-only results
+          console.warn("Failed to query received emails for seed:", err);
+        }
+
+        send("progress", {
+          fetched: totalFetched,
+          limit: SEED_LIMIT,
+          contacts: recipientCounts.size,
           phase: "Preparing results...",
         });
 
-        // Sort by frequency, take top 50
+        // Sort by frequency (return all — frontend handles search/display)
         const sorted = [...recipientCounts.values()]
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 50);
+          .sort((a, b) => b.count - a.count);
 
         // Exclude already-added contacts
         const existingContacts = await db.query.networkContacts.findMany({

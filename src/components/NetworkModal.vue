@@ -153,10 +153,10 @@ const contactSearchSuggestions = computed(() => {
     .slice(0, 5) // limit to top 5 matches
 })
 
-// Discover tab: filter suggestions
+// Discover tab: filter suggestions (show top 50 by default, all when searching)
 const filteredSuggestions = computed(() => {
   const q = seedSearch.value.toLowerCase().trim()
-  if (!q) return suggestions.value
+  if (!q) return suggestions.value.slice(0, 50)
   return suggestions.value.filter(s =>
     s.displayName.toLowerCase().includes(q) ||
     s.email.toLowerCase().includes(q)
@@ -403,7 +403,10 @@ async function submitFact() {
                 {{ batchAdding ? 'Adding...' : `Add ${selectedSuggestions.size} selected` }}
               </button>
             </div>
-            <p class="seed-description">Found {{ suggestions.length }} contacts you email frequently.</p>
+            <p class="seed-description">
+              {{ seedSearch ? `${filteredSuggestions.length} matches` : `Showing top ${Math.min(50, suggestions.length)} of ${suggestions.length} contacts` }}
+              <template v-if="!seedSearch"> &mdash; search for anyone</template>
+            </p>
 
             <div v-for="s in filteredSuggestions" :key="s.email" class="suggestion-row">
               <input type="checkbox" :checked="selectedSuggestions.has(suggestions.indexOf(s))" class="suggestion-check" @click.stop="toggleSuggestion(suggestions.indexOf(s))" />
