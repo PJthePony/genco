@@ -102,13 +102,18 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
   const briefingEmails = new Set(sources.map((s) => s.emailAddress.toLowerCase()));
 
   // Load network contacts so we can update their tracking during scan
-  const networkContactsList = await db.query.networkContacts.findMany({
-    where: eq(networkContacts.userId, userId),
-    columns: { id: true, email: true },
-  });
-  const networkEmailMap = new Map(
-    networkContactsList.map((nc) => [nc.email.toLowerCase(), nc.id]),
-  );
+  let networkEmailMap = new Map<string, string>();
+  try {
+    const networkContactsList = await db.query.networkContacts.findMany({
+      where: eq(networkContacts.userId, userId),
+      columns: { id: true, email: true },
+    });
+    networkEmailMap = new Map(
+      networkContactsList.map((nc) => [nc.email.toLowerCase(), nc.id]),
+    );
+  } catch (err) {
+    console.warn("Could not load network contacts (table may not exist yet):", (err as Error).message);
+  }
 
   const userEmail = connection.gmailAddress;
   const now = Date.now();

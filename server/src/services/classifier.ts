@@ -68,13 +68,18 @@ export async function classifyPendingEmails(
   );
 
   // Load network contacts for personal context extraction
-  const networkContactsList = await db.query.networkContacts.findMany({
-    where: eq(networkContacts.userId, userId),
-    columns: { id: true, email: true },
-  });
-  const networkContactMap = new Map(
-    networkContactsList.map((nc) => [nc.email.toLowerCase(), nc.id]),
-  );
+  let networkContactMap = new Map<string, string>();
+  try {
+    const networkContactsList = await db.query.networkContacts.findMany({
+      where: eq(networkContacts.userId, userId),
+      columns: { id: true, email: true },
+    });
+    networkContactMap = new Map(
+      networkContactsList.map((nc) => [nc.email.toLowerCase(), nc.id]),
+    );
+  } catch (err) {
+    console.warn("Could not load network contacts:", (err as Error).message);
+  }
 
   // Get Gmail tokens for sender history lookups
   const gmailTokens = await getGmailTokens(userId);
