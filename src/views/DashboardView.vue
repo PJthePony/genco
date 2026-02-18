@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useFeedback } from '../composables/useFeedback'
 import { useGroupedQueue } from '../composables/useGroupedQueue'
@@ -19,6 +19,32 @@ const { items: digestItems, fetchDigest } = useDigest()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
+
+// ── Delayed section visibility ──
+// When the last card in a section is cleared, keep the section visible
+// for 400ms so the CompactRow's CSS exit animation can finish.
+const showActionSection = ref(false)
+const showArchiveSection = ref(false)
+let actionHideTimer = null
+let archiveHideTimer = null
+
+watch(() => actionSection.value?.count, (count) => {
+  clearTimeout(actionHideTimer)
+  if (count > 0) {
+    showActionSection.value = true
+  } else {
+    actionHideTimer = setTimeout(() => { showActionSection.value = false }, 400)
+  }
+}, { immediate: true })
+
+watch(() => archiveSection.value?.count, (count) => {
+  clearTimeout(archiveHideTimer)
+  if (count > 0) {
+    showArchiveSection.value = true
+  } else {
+    archiveHideTimer = setTimeout(() => { showArchiveSection.value = false }, 400)
+  }
+}, { immediate: true })
 
 // ── Toast ──
 const toastMessage = ref('')
@@ -335,6 +361,8 @@ onUnmounted(() => {
   document.removeEventListener('touchstart', onTouchStart)
   document.removeEventListener('touchmove', onTouchMove)
   document.removeEventListener('touchend', onTouchEnd)
+  clearTimeout(actionHideTimer)
+  clearTimeout(archiveHideTimer)
 })
 </script>
 
@@ -390,7 +418,7 @@ onUnmounted(() => {
 
       <!-- Action Items (replies + tasks) -->
       <ActionSection
-        v-if="actionSection?.count > 0"
+        v-if="showActionSection"
         :section="actionSection"
         :bulk-progress="bulkProgress['action']"
         @approve="approveCard"
@@ -410,7 +438,7 @@ onUnmounted(() => {
 
       <!-- Archive (low priority cleanup) -->
       <ActionSection
-        v-if="archiveSection?.count > 0"
+        v-if="showArchiveSection"
         :section="archiveSection"
         :bulk-progress="bulkProgress['archive']"
         @approve="approveCard"
