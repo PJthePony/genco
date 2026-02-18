@@ -464,7 +464,6 @@ onUnmounted(() => {
 
       <!-- Follow Up (proactive outreach) -->
       <FollowUpSection
-        v-if="followUpCount > 0"
         :items="followUps"
         @draft="handleFollowUpDraft"
         @snooze="handleFollowUpSnooze"

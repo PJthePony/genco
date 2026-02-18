@@ -38,21 +38,26 @@ function handleDraft(id) {
         </div>
       </div>
       <div class="section-header-right">
-        <span class="count-badge followup">{{ items.length }}</span>
+        <span v-if="items.length > 0" class="count-badge followup">{{ items.length }}</span>
         <svg class="section-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
 
     <div v-if="expanded" class="section-body">
-      <FollowUpCard
-        v-for="card in items"
-        :key="card.id"
-        :card="card"
-        @draft="handleDraft"
-        @snooze="handleSnooze"
-        @dismiss="handleDismiss"
-        @act="$emit('act', $event)"
-      />
+      <template v-if="items.length > 0">
+        <FollowUpCard
+          v-for="card in items"
+          :key="card.id"
+          :card="card"
+          @draft="handleDraft"
+          @snooze="handleSnooze"
+          @dismiss="handleDismiss"
+          @act="$emit('act', $event)"
+        />
+      </template>
+      <div v-else class="empty-state">
+        <p>Add contacts to your network and Genco will surface follow-up opportunities here.</p>
+      </div>
 
       <div class="section-footer">
         <button class="btn-manage" @click.stop="$emit('manage-network')">
@@ -179,5 +184,17 @@ function handleDraft(id) {
 .btn-manage:hover {
   color: var(--color-text-secondary);
   border-color: var(--color-text-muted);
+}
+
+.empty-state {
+  padding: 16px 4px 8px;
+  text-align: center;
+}
+
+.empty-state p {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0;
 }
 </style>
