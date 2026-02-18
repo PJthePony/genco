@@ -3,13 +3,19 @@ import { useAuth } from '../composables/useAuth'
 
 const routes = [
   {
+    path: '/',
+    name: 'Landing',
+    component: () => import('../views/LandingView.vue'),
+    meta: { redirectIfAuth: true }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('../views/LoginView.vue'),
     meta: { requiresGuest: true }
   },
   {
-    path: '/',
+    path: '/dashboard',
     name: 'Dashboard',
     component: () => import('../views/DashboardView.vue'),
     meta: { requiresAuth: true }
@@ -39,8 +45,10 @@ router.beforeEach((to, _from, next) => {
 
 function doNavigationGuard(to, isAuthenticated, next) {
   if (to.meta.requiresAuth && !isAuthenticated.value) {
-    next({ name: 'Login' })
+    next({ name: 'Landing' })
   } else if (to.meta.requiresGuest && isAuthenticated.value) {
+    next({ name: 'Dashboard' })
+  } else if (to.meta.redirectIfAuth && isAuthenticated.value) {
     next({ name: 'Dashboard' })
   } else {
     next()

@@ -19,7 +19,7 @@ function syncSessionCookie(newSession, redirect = false) {
   const params = new URLSearchParams({
     token: newSession.access_token,
     refresh: newSession.refresh_token,
-    returnTo: window.location.origin + window.location.pathname,
+    returnTo: window.location.origin + '/dashboard',
   })
 
   if (redirect) {
@@ -80,8 +80,8 @@ export function useAuth() {
 
   const signIn = async (email) => {
     const redirectTo = import.meta.env.DEV
-      ? 'http://localhost:5173'
-      : 'https://genco.tanzillo.ai'
+      ? 'http://localhost:5173/dashboard'
+      : 'https://genco.tanzillo.ai/dashboard'
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
