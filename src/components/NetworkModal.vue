@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useNetwork } from '../composables/useNetwork'
 import { avatarColor, getInitials, daysAgo } from '../lib/formatters'
 
@@ -37,6 +37,7 @@ const addLoading = ref(false)
 // Seed flow
 const selectedSuggestions = ref(new Set())
 const batchAdding = ref(false)
+const seedSearch = ref('')
 
 // Fact form
 const addingFactFor = ref(null)
@@ -119,6 +120,15 @@ function toggleSuggestion(index) {
   }
 }
 
+const filteredSuggestions = computed(() => {
+  const q = seedSearch.value.toLowerCase().trim()
+  if (!q) return suggestions.value
+  return suggestions.value.filter(s =>
+    s.displayName.toLowerCase().includes(q) ||
+    s.email.toLowerCase().includes(q)
+  )
+})
+
 async function approveSelected() {
   batchAdding.value = true
   const selected = [...selectedSuggestions.value].map(i => suggestions.value[i])
@@ -129,6 +139,9 @@ async function approveSelected() {
         displayName: s.displayName,
       })),
     )
+    suggestions.value = []
+    selectedSuggestions.value = new Set()
+    seedSearch.value = ''
     activeTab.value = 'contacts'
   } catch (err) {
     // handled in composable
@@ -272,17 +285,24 @@ async function submitFact() {
           </div>
 
           <div v-else>
-            <div class="seed-header">
-              <p class="seed-description">Found {{ suggestions.length }} contacts you email frequently. Select the ones to add.</p>
-              <div class="seed-actions">
-                <button class="btn-submit" @click="approveSelected" :disabled="batchAdding || selectedSuggestions.size === 0">
-                  {{ batchAdding ? 'Adding...' : `Add ${selectedSuggestions.size} selected` }}
-                </button>
+            <div class="seed-toolbar">
+              <div class="seed-search-wrap">
+                <svg class="seed-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  v-model="seedSearch"
+                  type="text"
+                  placeholder="Search results..."
+                  class="seed-search-input"
+                />
               </div>
+              <button class="btn-submit" @click="approveSelected" :disabled="batchAdding || selectedSuggestions.size === 0">
+                {{ batchAdding ? 'Adding...' : `Add ${selectedSuggestions.size} selected` }}
+              </button>
             </div>
+            <p class="seed-description">Found {{ suggestions.length }} contacts you email frequently.</p>
 
-            <div v-for="(s, i) in suggestions" :key="s.email" class="suggestion-row" @click="toggleSuggestion(i)">
-              <input type="checkbox" :checked="selectedSuggestions.has(i)" class="suggestion-check" @click.stop="toggleSuggestion(i)" />
+            <div v-for="s in filteredSuggestions" :key="s.email" class="suggestion-row" @click="toggleSuggestion(suggestions.indexOf(s))">
+              <input type="checkbox" :checked="selectedSuggestions.has(suggestions.indexOf(s))" class="suggestion-check" @click.stop="toggleSuggestion(suggestions.indexOf(s))" />
               <div class="avatar avatar-sm" :class="avatarColor(s.email)">
                 {{ getInitials(s.displayName, s.email) }}
               </div>
@@ -292,6 +312,17 @@ async function submitFact() {
                 <div v-if="s.senderSummary" class="suggestion-summary">{{ s.senderSummary }}</div>
               </div>
               <span class="suggestion-count">{{ s.messageCount }} emails</span>
+            </div>
+
+            <div v-if="filteredSuggestions.length === 0 && seedSearch" class="empty-contacts">
+              <p>No matches for "{{ seedSearch }}"</p>
+            </div>
+
+            <div class="seed-rescan">
+              <button class="btn-seed" @click="handleSeed" :disabled="seeding">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Rescan Gmail
+              </button>
             </div>
           </div>
         </div>
@@ -636,17 +667,52 @@ async function submitFact() {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.seed-header {
+.seed-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  gap: 12px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
-.seed-description {
+.seed-search-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.seed-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.seed-search-input {
+  width: 100%;
+  padding: 8px 12px 8px 30px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   font-size: 0.75rem;
-  color: var(--color-text-secondary);
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.seed-search-input:focus { outline: none; border-color: var(--color-accent-border); }
+
+.seed-description {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+
+.seed-rescan {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 8px;
 }
 
 .suggestion-row {
