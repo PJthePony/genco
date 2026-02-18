@@ -418,14 +418,6 @@ onUnmounted(() => {
         @bulk-approve="handleBulkApprove"
       />
 
-      <!-- Daily Digest -->
-      <DailyDigest
-        v-if="digestItems.length > 0"
-        :items="digestItems"
-        @manage-sources="settingsOpen = true"
-        @promote="promoteDigestItem"
-      />
-
       <!-- Archive (low priority cleanup) -->
       <ActionSection
         v-if="showArchiveSection"
@@ -447,6 +439,14 @@ onUnmounted(() => {
         <h2>Nothing here yet.</h2>
         <p>Hit "Scan inbox" to pull in your unread emails.</p>
       </div>
+
+      <!-- Daily Digest -->
+      <DailyDigest
+        v-if="digestItems.length > 0"
+        :items="digestItems"
+        @manage-sources="settingsOpen = true"
+        @promote="promoteDigestItem"
+      />
 
       <!-- Follow Up (proactive outreach) -->
       <FollowUpSection

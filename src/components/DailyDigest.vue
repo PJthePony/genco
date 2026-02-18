@@ -25,7 +25,7 @@ function toggle() { expanded.value = !expanded.value }
         </div>
       </div>
       <div class="briefing-digest-right">
-        <span class="briefing-digest-badge">{{ items.length }} items</span>
+        <span class="briefing-digest-badge">{{ items.length }}</span>
         <svg class="briefing-digest-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
