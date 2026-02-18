@@ -206,13 +206,13 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
               })
               .where(eq(networkContacts.id, networkContactId));
           } else {
-            // New incoming email — ball is in P.J.'s court
+            // Update metadata only — threadStatus will be set by the
+            // classifier after AI determines whether this email warrants a reply
             await db
               .update(networkContacts)
               .set({
                 lastContactAt: email.receivedAt,
                 lastDirection: "received",
-                threadStatus: "awaiting_your_reply",
                 gmailThreadId: email.gmailThreadId,
                 lastSubject: email.subject,
               })
@@ -322,12 +322,25 @@ async function detectFollowUps(userId: string): Promise<number> {
     const lastContactTime = contact.lastContactAt.getTime();
 
     // 1. Ball in your court: awaiting_your_reply AND last contact > 2 days ago
+    //    AND the AI actually classified the latest email as needing a reply
     if (
       contact.threadStatus === "awaiting_your_reply" &&
       contact.lastContactAt < twoDaysAgo
     ) {
       const key = `${contact.id}:ball_in_your_court`;
       if (!existingKeys.has(key)) {
+        // Verify: the latest email from this contact was classified as "reply"
+        const latestEmail = await db.query.emailQueue.findFirst({
+          where: and(
+            eq(emailQueue.userId, userId),
+            eq(emailQueue.fromEmail, contact.email),
+          ),
+          orderBy: (eq, { desc }) => [desc(eq.receivedAt)],
+          columns: { aiRecommendedAction: true },
+        });
+
+        if (latestEmail?.aiRecommendedAction !== "reply") continue;
+
         const daysAgo = Math.floor((now - lastContactTime) / (24 * 60 * 60 * 1000));
         await db.insert(followUpQueue).values({
           networkContactId: contact.id,

@@ -304,6 +304,27 @@ export async function classifyPendingEmails(
         }
       }
 
+      // Update threadStatus for existing network contacts based on AI signal.
+      // Only set "awaiting_your_reply" when the AI confirmed this email
+      // actually needs P.J.'s personal response — not for newsletters,
+      // notifications, or FYI emails from people who happen to be in the network.
+      if (isNetworkContact && result.recommendedAction === "reply") {
+        const contactId = networkContactMap.get(email.fromEmail.toLowerCase());
+        if (contactId) {
+          try {
+            await db
+              .update(networkContacts)
+              .set({ threadStatus: "awaiting_your_reply" })
+              .where(eq(networkContacts.id, contactId));
+          } catch (err) {
+            console.warn(
+              `Failed to update threadStatus for ${email.fromEmail}:`,
+              err,
+            );
+          }
+        }
+      }
+
       // Auto-process briefing items — they go straight to the digest,
       // not the decision queue. User doesn't need to approve these.
       if (result.recommendedAction === "briefing") {

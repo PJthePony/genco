@@ -141,6 +141,9 @@ const NOISE_DOMAINS = new Set([
   "airbnb.com",
   "booking.com",
   "expedia.com",
+  // App-specific / local
+  "tanzillo.ai",
+  "statesman.com",
 ]);
 
 /** Domain prefixes that signal a mass-email subdomain (e.g. mail.company.com). */
