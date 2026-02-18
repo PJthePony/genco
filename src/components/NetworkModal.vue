@@ -195,8 +195,8 @@ async function submitFact() {
 
           <!-- Add form -->
           <div v-if="adding" class="add-form">
-            <input v-model="newEmail" type="email" placeholder="Email address" class="input" />
             <input v-model="newName" type="text" placeholder="Name" class="input" />
+            <input v-model="newEmail" type="email" placeholder="Email address" class="input" />
             <input v-model="newCompany" type="text" placeholder="Company (optional)" class="input" />
             <div v-if="addError" class="form-error">{{ addError }}</div>
             <div class="add-form-actions">
