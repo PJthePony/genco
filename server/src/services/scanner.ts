@@ -118,9 +118,6 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
   let autoArchived = 0;
   let alreadyReplied = 0;
 
-  // Track threads we've already checked for replies (avoid duplicate API calls)
-  const threadReplyCache = new Map<string, boolean>();
-
   for (const email of emails) {
     const isBriefingSource = briefingEmails.has(email.fromEmail.toLowerCase());
 
@@ -136,20 +133,16 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
     }
 
     // For recent (non-historical) emails, check if P.J. already replied
-    // to this thread. If so, mark as processed instead of pending.
+    // to this thread AFTER this specific message arrived. Each message
+    // needs its own check since the afterDate differs per message.
     let userAlreadyReplied = false;
     if (!isHistorical && email.gmailThreadId) {
-      if (threadReplyCache.has(email.gmailThreadId)) {
-        userAlreadyReplied = threadReplyCache.get(email.gmailThreadId)!;
-      } else {
-        userAlreadyReplied = await hasUserRepliedToThread(
-          tokens,
-          email.gmailThreadId,
-          userEmail,
-          email.receivedAt,
-        );
-        threadReplyCache.set(email.gmailThreadId, userAlreadyReplied);
-      }
+      userAlreadyReplied = await hasUserRepliedToThread(
+        tokens,
+        email.gmailThreadId,
+        userEmail,
+        email.receivedAt,
+      );
     }
 
     try {

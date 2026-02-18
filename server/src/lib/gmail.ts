@@ -110,18 +110,42 @@ export async function fetchInboxEmails(
   if (lastHistoryId) {
     // Incremental sync via history
     try {
+      // Fetch both messageAdded AND labelsAdded events. When a reply
+      // arrives on an archived thread, Gmail may record the new message
+      // as a messageAdded event WITHOUT the INBOX label, then separately
+      // fire a labelsAdded event to re-surface the thread. We need both.
       const historyResponse = await gmail.users.history.list({
         userId: "me",
         startHistoryId: lastHistoryId,
-        historyTypes: ["messageAdded"],
-        labelId: "INBOX",
+        historyTypes: ["messageAdded", "labelsAdded"],
       });
 
+      const seen = new Set<string>();
       const histories = historyResponse.data.history ?? [];
       for (const h of histories) {
+        // New messages that landed in INBOX
         for (const msg of h.messagesAdded ?? []) {
-          if (msg.message?.id && msg.message?.labelIds?.includes("INBOX")) {
-            messageIds.push(msg.message.id);
+          if (
+            msg.message?.id &&
+            msg.message?.labelIds?.includes("INBOX") &&
+            !msg.message?.labelIds?.includes("TRASH") &&
+            !msg.message?.labelIds?.includes("SPAM")
+          ) {
+            if (!seen.has(msg.message.id)) {
+              seen.add(msg.message.id);
+              messageIds.push(msg.message.id);
+            }
+          }
+        }
+        // Messages that had INBOX label added (replies to archived threads)
+        for (const lbl of h.labelsAdded ?? []) {
+          if (
+            lbl.message?.id &&
+            lbl.labelIds?.includes("INBOX") &&
+            !seen.has(lbl.message.id)
+          ) {
+            seen.add(lbl.message.id);
+            messageIds.push(lbl.message.id);
           }
         }
       }
