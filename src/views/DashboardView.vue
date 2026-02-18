@@ -169,19 +169,50 @@ function openEmail(emailId) {
   }
 }
 
-function openDigestEmail(itemId) {
+async function openDigestEmail(itemId) {
   const item = digestItems.value.find(d => d.id === itemId)
-  if (item) {
+  if (!item) return
+
+  const formattedDate = new Date(item.receivedAt).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+  })
+
+  // If we already have the body cached, show it immediately
+  if (item.bodyHtml) {
     activeEmail.value = {
       subject: item.subject || item.summary,
       from: item.fromName ? `${item.fromName} <${item.fromEmail}>` : item.fromEmail,
       to: 'pjtanzillo@gmail.com',
-      date: new Date(item.receivedAt).toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
-      }),
-      body: item.bodyHtml || '<p>(No content)</p>',
+      date: formattedDate,
+      body: item.bodyHtml,
     }
     emailModalOpen.value = true
+    return
+  }
+
+  // Otherwise fetch the body (may re-fetch from Gmail if pruned)
+  activeEmail.value = {
+    subject: item.subject || item.summary,
+    from: item.fromName ? `${item.fromName} <${item.fromEmail}>` : item.fromEmail,
+    to: 'pjtanzillo@gmail.com',
+    date: formattedDate,
+    body: '<p style="color:var(--color-text-muted)">Loading…</p>',
+  }
+  emailModalOpen.value = true
+
+  try {
+    const data = await api(`/queue/${itemId}/body`)
+    activeEmail.value = {
+      ...activeEmail.value,
+      body: data.body || '<p>(No content available)</p>',
+    }
+    // Cache it for next time
+    item.bodyHtml = data.body
+  } catch (err) {
+    activeEmail.value = {
+      ...activeEmail.value,
+      body: '<p>(Failed to load email body)</p>',
+    }
   }
 }
 

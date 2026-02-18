@@ -88,6 +88,105 @@ queueRoutes.get("/digest", async (c) => {
   return c.json({ items });
 });
 
+// GET /queue/:id/body — fetch email body (re-fetch from Gmail if pruned)
+queueRoutes.get("/:id/body", async (c) => {
+  const user = c.get("user");
+  const emailId = c.req.param("id");
+
+  const email = await db.query.emailQueue.findFirst({
+    where: and(
+      eq(emailQueue.id, emailId),
+      eq(emailQueue.userId, user.sub),
+    ),
+    columns: {
+      subject: true,
+      fromEmail: true,
+      fromName: true,
+      bodyHtml: true,
+      bodyText: true,
+      receivedAt: true,
+      gmailMessageId: true,
+    },
+  });
+
+  if (!email) {
+    return c.json({ error: "Email not found" }, 404);
+  }
+
+  // If body is still in DB, return it
+  if (email.bodyHtml) {
+    return c.json({
+      subject: email.subject,
+      from: email.fromName ? `${email.fromName} <${email.fromEmail}>` : email.fromEmail,
+      date: email.receivedAt,
+      body: email.bodyHtml,
+    });
+  }
+
+  // Body was pruned — re-fetch from Gmail
+  const connection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, user.sub),
+  });
+
+  if (!connection) {
+    return c.json({
+      subject: email.subject,
+      from: email.fromName ? `${email.fromName} <${email.fromEmail}>` : email.fromEmail,
+      date: email.receivedAt,
+      body: email.bodyText ? `<pre style="white-space:pre-wrap;font-family:inherit">${email.bodyText}</pre>` : "<p>(Body no longer available)</p>",
+    });
+  }
+
+  try {
+    const tokens = await refreshAccessToken(connection as any);
+    const { google } = await import("googleapis");
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: tokens.access_token });
+    const gmail = google.gmail({ version: "v1", auth });
+
+    const msg = await gmail.users.messages.get({
+      userId: "me",
+      id: email.gmailMessageId,
+      format: "full",
+    });
+
+    // Extract HTML body from parts
+    let html = "";
+    function findHtml(parts: any[] | undefined) {
+      if (!parts) return;
+      for (const part of parts) {
+        if (part.mimeType === "text/html" && part.body?.data) {
+          html = Buffer.from(part.body.data, "base64url").toString("utf-8");
+          return;
+        }
+        if (part.parts) findHtml(part.parts);
+      }
+    }
+
+    const payload = msg.data.payload;
+    if (payload?.body?.data && payload.mimeType === "text/html") {
+      html = Buffer.from(payload.body.data, "base64url").toString("utf-8");
+    } else {
+      findHtml(payload?.parts);
+    }
+
+    return c.json({
+      subject: email.subject,
+      from: email.fromName ? `${email.fromName} <${email.fromEmail}>` : email.fromEmail,
+      date: email.receivedAt,
+      body: html || "<p>(Could not retrieve email body)</p>",
+    });
+  } catch (err) {
+    console.error("Failed to re-fetch email body from Gmail:", err);
+    return c.json({
+      subject: email.subject,
+      from: email.fromName ? `${email.fromName} <${email.fromEmail}>` : email.fromEmail,
+      date: email.receivedAt,
+      body: "<p>(Could not retrieve email body)</p>",
+    });
+  }
+});
+
 // POST /queue/reprocess — move historical items to pending so they get classified
 queueRoutes.post("/reprocess", async (c) => {
   const user = c.get("user");
