@@ -8,7 +8,7 @@ const props = defineProps({
   scanProgress: Object,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft', 'send-imessage', 'manage-network', 'scan-threads'])
+const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft', 'send-imessage', 'scan-threads'])
 
 const expanded = ref(true)
 const expandedCardId = ref(null)
@@ -85,19 +85,8 @@ function handleSendMessage(id, body) {
       <div v-else class="empty-state">
         <p>Scan your Gmail threads to find conversations that need attention.</p>
         <button class="btn-scan" @click.stop="$emit('scan-threads')" :disabled="scanning">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           Scan threads
-        </button>
-      </div>
-
-      <div class="section-footer">
-        <button class="btn-manage" @click.stop="$emit('scan-threads')" :disabled="scanning">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          {{ scanning ? 'Scanning...' : 'Scan threads' }}
-        </button>
-        <button class="btn-manage" @click.stop="$emit('manage-network')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          Manage network
         </button>
       </div>
     </div>
@@ -192,34 +181,6 @@ function handleSendMessage(id, body) {
 .section-body {
   padding: 0 18px 8px;
   border-top: 1px solid var(--color-border);
-}
-
-.section-footer {
-  padding: 10px 0 4px;
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-}
-
-.btn-manage {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: 0.68rem;
-  font-weight: 500;
-  font-family: inherit;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.btn-manage:hover {
-  color: var(--color-text-secondary);
-  border-color: var(--color-text-muted);
 }
 
 .empty-state {
