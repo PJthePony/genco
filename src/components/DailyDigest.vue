@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import { timeAgo } from '../lib/formatters.js'
 
 defineProps({
   items: Array,
@@ -35,6 +36,7 @@ function toggle() { expanded.value = !expanded.value }
           <div class="briefing-item-header">
             <span class="briefing-item-source">{{ item.source }}</span>
             <span class="briefing-item-tag" :class="item.tagClass">{{ item.tag }}</span>
+            <span class="briefing-item-time">{{ timeAgo(item.receivedAt) }}</span>
             <button class="briefing-item-action" @click.stop="$emit('promote', item.id)">Action</button>
           </div>
           <div class="briefing-item-summary">{{ item.summary }}</div>
@@ -175,6 +177,12 @@ function toggle() { expanded.value = !expanded.value }
 .tag-sale { background: var(--color-accent-soft); color: var(--color-accent); }
 .tag-news { background: var(--color-blue-soft); color: var(--color-blue); }
 .tag-update { background: var(--color-purple-soft); color: var(--color-purple); }
+
+.briefing-item-time {
+  font-size: 0.62rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
 
 .briefing-item-action {
   margin-left: auto;
