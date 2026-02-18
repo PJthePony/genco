@@ -88,7 +88,7 @@ async function submitAdd() {
     })
     adding.value = false
   } catch (err) {
-    addError.value = 'Failed to add contact'
+    addError.value = err.message || 'Failed to add contact'
   } finally {
     addLoading.value = false
   }
