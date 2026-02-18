@@ -117,7 +117,7 @@ export async function fetchInboxEmails(
       const historyResponse = await gmail.users.history.list({
         userId: "me",
         startHistoryId: lastHistoryId,
-        historyTypes: ["messageAdded", "labelsAdded"],
+        historyTypes: ["messageAdded", "labelAdded"],
       });
 
       const seen = new Set<string>();
