@@ -10,6 +10,7 @@ import {
   gmailConnections,
   emailQueue,
   outboundMessages,
+  userNoiseList,
 } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { env } from "../config.js";
@@ -220,7 +221,7 @@ networkRoutes.get("/follow-ups", async (c) => {
 
 // POST /network/follow-ups/:id/action — act on a follow-up
 const followUpActionSchema = z.object({
-  action: z.enum(["act", "snooze", "dismiss"]),
+  action: z.enum(["act", "snooze", "dismiss", "noise"]),
   snoozeDays: z.number().min(1).max(90).optional(),
 });
 
@@ -244,7 +245,68 @@ networkRoutes.post("/follow-ups/:id/action", async (c) => {
 
   const body = parsed.data;
 
-  if (body.action === "snooze") {
+  if (body.action === "noise") {
+    // "Not a person" — permanently block this sender:
+    // 1. Look up the contact
+    const followUp = await db.query.followUpQueue.findFirst({
+      where: eq(followUpQueue.id, id),
+      columns: { networkContactId: true },
+    });
+    if (!followUp) {
+      return c.json({ error: "Follow-up not found" }, 404);
+    }
+
+    const contact = await db.query.networkContacts.findFirst({
+      where: and(
+        eq(networkContacts.id, followUp.networkContactId),
+        eq(networkContacts.userId, user.sub),
+      ),
+      columns: { id: true, email: true, displayName: true },
+    });
+    if (!contact) {
+      return c.json({ error: "Contact not found" }, 404);
+    }
+
+    // 2. Add to user's noise list
+    await db
+      .insert(userNoiseList)
+      .values({
+        userId: user.sub,
+        email: contact.email.toLowerCase(),
+        displayName: contact.displayName,
+      })
+      .onConflictDoNothing();
+
+    // 3. Dismiss ALL pending/snoozed follow-ups for this contact
+    const allContactFollowUps = await db.query.followUpQueue.findMany({
+      where: and(
+        eq(followUpQueue.networkContactId, contact.id),
+        or(
+          eq(followUpQueue.status, "pending"),
+          eq(followUpQueue.status, "snoozed"),
+        ),
+      ),
+      columns: { id: true },
+    });
+    for (const fu of allContactFollowUps) {
+      await db
+        .update(followUpQueue)
+        .set({ status: "dismissed" })
+        .where(eq(followUpQueue.id, fu.id));
+    }
+
+    // 4. Delete the contact from network
+    await db
+      .delete(networkContacts)
+      .where(
+        and(
+          eq(networkContacts.id, contact.id),
+          eq(networkContacts.userId, user.sub),
+        ),
+      );
+
+    console.log(`[Noise] Blocked sender: ${contact.email} (${contact.displayName})`);
+  } else if (body.action === "snooze") {
     const snoozeDays = body.snoozeDays ?? 7;
     const snoozedUntil = new Date(
       Date.now() + snoozeDays * 24 * 60 * 60 * 1000,
@@ -385,6 +447,13 @@ networkRoutes.post("/seed", async (c) => {
 
   const userEmail = connection.gmailAddress.toLowerCase();
 
+  // Load per-user noise list
+  const seedNoiseRows = await db.query.userNoiseList.findMany({
+    where: eq(userNoiseList.userId, user.sub),
+    columns: { email: true },
+  });
+  const userNoiseSet = new Set(seedNoiseRows.map((r) => r.email.toLowerCase()));
+
   const { google } = await import("googleapis");
   const authClient = new google.auth.OAuth2(
     env.GOOGLE_CLIENT_ID,
@@ -465,6 +534,7 @@ networkRoutes.post("/seed", async (c) => {
                 const email = (emailMatch?.[1] ?? recipient).toLowerCase().trim();
 
                 if (isNoiseEmail(email, userEmail)) continue;
+                if (userNoiseSet.has(email)) continue;
 
                 const nameMatch = recipient.match(/^([^<]+)</);
                 const name = nameMatch?.[1]?.trim()?.replace(/"/g, "") ?? "";
@@ -516,6 +586,7 @@ networkRoutes.post("/seed", async (c) => {
           for (const row of receivedRows) {
             const email = row.email.toLowerCase().trim();
             if (isNoiseEmail(email, userEmail)) continue;
+            if (userNoiseSet.has(email)) continue;
 
             const existing = recipientCounts.get(email);
             if (existing) {
@@ -617,6 +688,13 @@ networkRoutes.post("/scan-threads", async (c) => {
   }
 
   const userEmail = connection.gmailAddress.toLowerCase();
+
+  // Load per-user noise list
+  const scanNoiseRows = await db.query.userNoiseList.findMany({
+    where: eq(userNoiseList.userId, user.sub),
+    columns: { email: true },
+  });
+  const scanNoiseSet = new Set(scanNoiseRows.map((r) => r.email.toLowerCase()));
 
   const { google } = await import("googleapis");
   const authClient = new google.auth.OAuth2(
@@ -761,8 +839,9 @@ networkRoutes.post("/scan-threads", async (c) => {
                 continue;
               }
 
-              // Skip noise / mass-email senders
+              // Skip noise / mass-email senders (static + per-user)
               if (isNoiseEmail(lastSenderEmail, userEmail)) continue;
+              if (scanNoiseSet.has(lastSenderEmail)) continue;
 
               // Only process network contacts
               const contact = networkEmailMap.get(lastSenderEmail);

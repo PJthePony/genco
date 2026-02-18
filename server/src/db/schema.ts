@@ -91,6 +91,25 @@ export const feedbackLog = pgTable(
   ],
 );
 
+// ── User Noise List (per-user blocked senders) ────────────────────────────
+
+export const userNoiseList = pgTable(
+  "user_noise_list",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
+    email: text("email").notNull(),
+    displayName: text("display_name"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_user_noise_user_email").on(table.userId, table.email),
+    index("idx_user_noise_user").on(table.userId),
+  ],
+);
+
 // ── Briefing Sources ────────────────────────────────────────────────────────
 
 export const briefingSources = pgTable(

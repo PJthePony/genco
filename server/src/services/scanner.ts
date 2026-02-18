@@ -7,6 +7,7 @@ import {
   networkContacts,
   followUpQueue,
   contactContext,
+  userNoiseList,
 } from "../db/schema.js";
 import {
   fetchInboxEmails,
@@ -118,6 +119,13 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
     console.warn("Could not load network contacts (table may not exist yet):", (err as Error).message);
   }
 
+  // Load per-user noise list (blocked senders)
+  const userNoiseRows = await db.query.userNoiseList.findMany({
+    where: eq(userNoiseList.userId, userId),
+    columns: { email: true },
+  });
+  const userNoiseSet = new Set(userNoiseRows.map((r) => r.email.toLowerCase()));
+
   const userEmail = connection.gmailAddress;
   const now = Date.now();
   let inserted = 0;
@@ -189,9 +197,10 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
       // whether the sender belongs in the network.
 
       // Update network contact tracking if sender is already in the network
+      // (skip if sender is on the user's noise list)
       const senderEmailLower = email.fromEmail.toLowerCase();
       const networkContactId = networkEmailMap.get(senderEmailLower);
-      if (networkContactId && !isHistorical) {
+      if (networkContactId && !isHistorical && !userNoiseSet.has(senderEmailLower)) {
         try {
           if (userAlreadyReplied) {
             // P.J. already replied — ball is in their court
@@ -292,6 +301,13 @@ async function detectFollowUps(userId: string): Promise<number> {
 
   if (contacts.length === 0) return 0;
 
+  // Load per-user noise list (blocked senders)
+  const userNoiseRows = await db.query.userNoiseList.findMany({
+    where: eq(userNoiseList.userId, userId),
+    columns: { email: true },
+  });
+  const userNoiseSet = new Set(userNoiseRows.map((r) => r.email.toLowerCase()));
+
   // Load existing pending/snoozed follow-ups to avoid duplicates
   const contactIds = contacts.map((c) => c.id);
   const existingFollowUps = await db.query.followUpQueue.findMany({
@@ -316,8 +332,9 @@ async function detectFollowUps(userId: string): Promise<number> {
     // Skip contacts with conversation_ended status
     if (contact.threadStatus === "conversation_ended") continue;
     if (!contact.lastContactAt) continue;
-    // Skip noise / mass-email senders (defense-in-depth)
+    // Skip noise / mass-email senders (static list + per-user blocked list)
     if (isNoiseEmail(contact.email)) continue;
+    if (userNoiseSet.has(contact.email.toLowerCase())) continue;
 
     const lastContactTime = contact.lastContactAt.getTime();
 

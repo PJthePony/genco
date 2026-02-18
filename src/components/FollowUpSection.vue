@@ -8,7 +8,7 @@ const props = defineProps({
   scanProgress: Object,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'act', 'save-draft', 'send-imessage', 'scan-threads'])
+const emit = defineEmits(['draft', 'snooze', 'dismiss', 'noise', 'act', 'save-draft', 'send-imessage', 'scan-threads'])
 
 const expanded = ref(true)
 const expandedCardId = ref(null)
@@ -39,6 +39,11 @@ function handleSaveDraft(id, body) {
 
 function handleSendMessage(id, body) {
   emit('send-imessage', id, body)
+}
+
+function handleNoise(id) {
+  expandedCardId.value = null
+  emit('noise', id)
 }
 </script>
 
@@ -78,6 +83,7 @@ function handleSendMessage(id, body) {
           @draft="handleDraft"
           @snooze="handleSnooze"
           @dismiss="handleDismiss"
+          @noise="handleNoise"
           @save-draft="handleSaveDraft"
           @send-imessage="handleSendMessage"
         />

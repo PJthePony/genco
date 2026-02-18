@@ -8,6 +8,7 @@ import {
   gmailConnections,
   networkContacts,
   contactContext,
+  userNoiseList,
 } from "../db/schema.js";
 import { classifyEmail, buildSenderSummaryFromHistory } from "../lib/claude.js";
 import {
@@ -86,6 +87,13 @@ export async function classifyPendingEmails(
   // Get Gmail tokens and user email for sender history lookups + noise filtering
   const gmailTokens = await getGmailTokens(userId);
   const userEmail = await getUserEmail(userId);
+
+  // Load per-user noise list (blocked senders)
+  const userNoiseRows = await db.query.userNoiseList.findMany({
+    where: eq(userNoiseList.userId, userId),
+    columns: { email: true },
+  });
+  const userNoiseSet = new Set(userNoiseRows.map((r) => r.email.toLowerCase()));
 
   // Track which senders we've already built history for in this batch
   const historyBuilt = new Set<string>();
@@ -257,6 +265,7 @@ export async function classifyPendingEmails(
         !networkContactMap.has(senderLower) &&
         !isBriefingSender &&
         !isNoiseEmail(senderLower, userEmail ?? undefined) &&
+        !userNoiseSet.has(senderLower) &&
         senderLower !== userEmail
       ) {
         try {

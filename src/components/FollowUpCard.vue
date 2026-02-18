@@ -6,7 +6,7 @@ const props = defineProps({
   expanded: Boolean,
 })
 
-const emit = defineEmits(['expand', 'draft', 'snooze', 'dismiss', 'act', 'save-draft', 'send-imessage', 'open-email'])
+const emit = defineEmits(['expand', 'draft', 'snooze', 'dismiss', 'noise', 'act', 'save-draft', 'send-imessage', 'open-email'])
 
 const showSnoozeOptions = ref(false)
 const draftText = ref('')
@@ -143,6 +143,11 @@ defineExpose({ onDraftReady })
       <button class="btn-action btn-dismiss" @click="$emit('dismiss', card.id)">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         Dismiss
+      </button>
+
+      <button class="btn-action btn-noise" @click="$emit('noise', card.id)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        Not a person
       </button>
     </div>
   </div>
@@ -498,4 +503,16 @@ defineExpose({ onDraftReady })
 }
 
 .btn-draft-cancel:hover { color: var(--color-text-secondary); }
+
+.btn-noise {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  border-color: transparent;
+  opacity: 0.6;
+}
+.btn-noise:hover {
+  opacity: 1;
+  color: #ef4444;
+  border-color: #ef444433;
+}
 </style>

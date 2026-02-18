@@ -61,6 +61,15 @@ async function handleFollowUpDismiss(id) {
   }
 }
 
+async function handleFollowUpNoise(id) {
+  try {
+    await actOnFollowUp(id, 'noise')
+    showToast('Blocked — sender removed from network')
+  } catch (err) {
+    showToast('Block failed')
+  }
+}
+
 async function handleFollowUpDraft(id) {
   try {
     await generateDraft(id)
@@ -504,6 +513,7 @@ onUnmounted(() => {
         @draft="handleFollowUpDraft"
         @snooze="handleFollowUpSnooze"
         @dismiss="handleFollowUpDismiss"
+        @noise="handleFollowUpNoise"
         @save-draft="handleSaveDraft"
         @send-imessage="handleSendMessage"
         @scan-threads="handleScanThreads"
