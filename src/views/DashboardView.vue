@@ -418,15 +418,6 @@ onUnmounted(() => {
         @bulk-approve="handleBulkApprove"
       />
 
-      <!-- Follow Up (proactive outreach) -->
-      <FollowUpSection
-        :items="followUps"
-        @draft="handleFollowUpDraft"
-        @snooze="handleFollowUpSnooze"
-        @dismiss="handleFollowUpDismiss"
-        @manage-network="networkModalOpen = true"
-      />
-
       <!-- Daily Digest -->
       <DailyDigest
         v-if="digestItems.length > 0"
@@ -456,6 +447,15 @@ onUnmounted(() => {
         <h2>Nothing here yet.</h2>
         <p>Hit "Scan inbox" to pull in your unread emails.</p>
       </div>
+
+      <!-- Follow Up (proactive outreach) -->
+      <FollowUpSection
+        :items="followUps"
+        @draft="handleFollowUpDraft"
+        @snooze="handleFollowUpSnooze"
+        @dismiss="handleFollowUpDismiss"
+        @manage-network="networkModalOpen = true"
+      />
     </div>
 
     <EmailModal
