@@ -16,7 +16,7 @@ const emit = defineEmits([
   'bulk-approve',
 ])
 
-const expanded = ref(props.section.count > 0 ? true : props.section.defaultExpanded)
+const expanded = ref(props.section.count > 0)
 const expandedCardId = ref(null)
 
 function toggle() { expanded.value = !expanded.value }
