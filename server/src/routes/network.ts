@@ -329,7 +329,7 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
 // NOTE: Must be registered BEFORE /:id routes to avoid path conflicts
 
 // POST /network/seed — discover top contacts from Gmail sent history (SSE)
-const SEED_LIMIT = 2000;
+const SEED_LIMIT = 5000;
 
 networkRoutes.post("/seed", async (c) => {
   const user = c.get("user");

@@ -150,6 +150,35 @@ async function approveSelected() {
   }
 }
 
+// Add individual suggestion
+const addingSingle = ref(null) // email of suggestion being added
+
+async function addSingleSuggestion(s) {
+  addingSingle.value = s.email
+  try {
+    await addContact({
+      email: s.email,
+      displayName: s.displayName,
+    })
+    // Remove from suggestions list
+    const idx = suggestions.value.findIndex(x => x.email === s.email)
+    if (idx !== -1) {
+      suggestions.value.splice(idx, 1)
+      // Update selected indices since array shifted
+      const newSelected = new Set()
+      selectedSuggestions.value.forEach(i => {
+        if (i < idx) newSelected.add(i)
+        else if (i > idx) newSelected.add(i - 1)
+      })
+      selectedSuggestions.value = newSelected
+    }
+  } catch (err) {
+    // handled in composable
+  } finally {
+    addingSingle.value = null
+  }
+}
+
 // Fact management
 function startAddFact(contactId) {
   addingFactFor.value = contactId
@@ -301,17 +330,20 @@ async function submitFact() {
             </div>
             <p class="seed-description">Found {{ suggestions.length }} contacts you email frequently.</p>
 
-            <div v-for="s in filteredSuggestions" :key="s.email" class="suggestion-row" @click="toggleSuggestion(suggestions.indexOf(s))">
+            <div v-for="s in filteredSuggestions" :key="s.email" class="suggestion-row">
               <input type="checkbox" :checked="selectedSuggestions.has(suggestions.indexOf(s))" class="suggestion-check" @click.stop="toggleSuggestion(suggestions.indexOf(s))" />
-              <div class="avatar avatar-sm" :class="avatarColor(s.email)">
+              <div class="avatar avatar-sm" :class="avatarColor(s.email)" @click="toggleSuggestion(suggestions.indexOf(s))">
                 {{ getInitials(s.displayName, s.email) }}
               </div>
-              <div class="suggestion-info">
+              <div class="suggestion-info" @click="toggleSuggestion(suggestions.indexOf(s))">
                 <div class="suggestion-name">{{ s.displayName }}</div>
                 <div class="suggestion-email">{{ s.email }}</div>
                 <div v-if="s.senderSummary" class="suggestion-summary">{{ s.senderSummary }}</div>
               </div>
-              <span class="suggestion-count">{{ s.messageCount }} emails</span>
+              <span class="suggestion-count">{{ s.messageCount }}</span>
+              <button class="btn-add-single" @click.stop="addSingleSuggestion(s)" :disabled="addingSingle === s.email">
+                {{ addingSingle === s.email ? '...' : 'Add' }}
+              </button>
             </div>
 
             <div v-if="filteredSuggestions.length === 0 && seedSearch" class="empty-contacts">
@@ -753,10 +785,26 @@ async function submitFact() {
 }
 
 .suggestion-count {
-  font-size: 0.65rem;
-  font-weight: 500;
+  font-size: 0.62rem;
   color: var(--color-text-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+.btn-add-single {
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid var(--color-accent-border);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.btn-add-single:hover:not(:disabled) { background: var(--color-accent); color: #fff; }
+.btn-add-single:disabled { opacity: 0.5; cursor: default; }
 </style>

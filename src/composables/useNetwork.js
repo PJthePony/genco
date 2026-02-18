@@ -11,7 +11,7 @@ const followUps = ref([])
 const suggestions = ref([])
 const loading = ref(false)
 const seeding = ref(false)
-const seedProgress = ref({ fetched: 0, limit: 2000, contacts: 0, phase: '' })
+const seedProgress = ref({ fetched: 0, limit: 5000, contacts: 0, phase: '' })
 
 const REASON_LABELS = {
   ball_in_your_court: 'Ball in your court',
@@ -147,7 +147,7 @@ export function useNetwork() {
 
   async function seedContacts() {
     seeding.value = true
-    seedProgress.value = { fetched: 0, limit: 2000, contacts: 0, phase: 'Starting...' }
+    seedProgress.value = { fetched: 0, limit: 5000, contacts: 0, phase: 'Starting...' }
     suggestions.value = []
 
     try {

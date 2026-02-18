@@ -181,8 +181,36 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
         inserted++;
       }
 
+      // Auto-add sender to network contacts if not already there
+      // (only for real emails entering the queue, not briefing/historical)
+      const senderEmailLower = email.fromEmail.toLowerCase();
+      if (!networkEmailMap.has(senderEmailLower) && !isHistorical && !isBriefingSource) {
+        try {
+          const [newContact] = await db
+            .insert(networkContacts)
+            .values({
+              userId,
+              email: senderEmailLower,
+              displayName: email.fromName || senderEmailLower.split("@")[0],
+              lastContactAt: email.receivedAt,
+              lastDirection: userAlreadyReplied ? "sent" : "received",
+              threadStatus: userAlreadyReplied ? "awaiting_their_reply" : "awaiting_your_reply",
+              gmailThreadId: email.gmailThreadId,
+              lastSubject: email.subject,
+            })
+            .onConflictDoNothing()
+            .returning();
+          if (newContact) {
+            networkEmailMap.set(senderEmailLower, newContact.id);
+          }
+        } catch (err) {
+          // Non-fatal — just skip auto-add
+          console.warn(`Failed to auto-add network contact ${senderEmailLower}:`, err);
+        }
+      }
+
       // Update network contact tracking if sender is in the network
-      const networkContactId = networkEmailMap.get(email.fromEmail.toLowerCase());
+      const networkContactId = networkEmailMap.get(senderEmailLower);
       if (networkContactId && !isHistorical) {
         try {
           if (userAlreadyReplied) {
