@@ -13,6 +13,7 @@ import { classifyEmail, buildSenderSummaryFromHistory } from "../lib/claude.js";
 import {
   fetchSenderHistory,
   refreshAccessToken,
+  archiveMessage,
   type GoogleTokens,
 } from "../lib/gmail.js";
 
@@ -253,6 +254,18 @@ export async function classifyPendingEmails(
             processedAt: new Date(),
           })
           .where(eq(emailQueue.id, email.id));
+
+        // Also archive in Gmail so it doesn't clutter the inbox
+        if (gmailTokens) {
+          try {
+            await archiveMessage(gmailTokens, email.gmailMessageId);
+          } catch (archiveErr) {
+            console.warn(
+              `Failed to archive briefing email ${email.gmailMessageId}:`,
+              archiveErr,
+            );
+          }
+        }
       }
 
       processed++;

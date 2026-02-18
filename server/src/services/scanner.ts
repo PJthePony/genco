@@ -249,21 +249,6 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
         }
       }
 
-      // Auto-archive briefing source emails in Gmail (only recent ones)
-      if (isBriefingSource && !isHistorical && !userAlreadyReplied) {
-        try {
-          await archiveMessage(tokens, email.gmailMessageId);
-          autoArchived++;
-          console.log(
-            `Auto-archived briefing source email: "${email.subject}" from ${email.fromEmail}`,
-          );
-        } catch (archiveErr) {
-          console.warn(
-            `Failed to auto-archive ${email.gmailMessageId}:`,
-            archiveErr,
-          );
-        }
-      }
     } catch (err: any) {
       // Unique constraint violation = already in queue
       if (err?.code === "23505") {
@@ -274,6 +259,18 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
           err,
         );
         skipped++;
+      }
+    }
+
+    // Auto-archive briefing source emails in Gmail
+    // This runs OUTSIDE the insert try/catch so it works even if the email
+    // was already in the DB (unique constraint). Also archives historical ones.
+    if (isBriefingSource && !userAlreadyReplied) {
+      try {
+        await archiveMessage(tokens, email.gmailMessageId);
+        autoArchived++;
+      } catch (archiveErr) {
+        // Silently skip — may already be archived
       }
     }
   }
