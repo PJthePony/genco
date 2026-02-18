@@ -30,6 +30,44 @@ networkRoutes.use("*", authMiddleware);
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Check if an email address looks like a newsletter / mass-email sender. */
+function isNoiseEmail(email: string, userEmail?: string): boolean {
+  if (!email.includes("@")) return true;
+  if (userEmail && email === userEmail) return true;
+
+  const local = email.split("@")[0] ?? "";
+  const domain = email.split("@")[1] ?? "";
+
+  // Common noreply/system senders
+  if (
+    email.includes("noreply") ||
+    email.includes("no-reply") ||
+    email.includes("notifications") ||
+    email.includes("mailer-daemon") ||
+    email.includes("unsubscribe")
+  ) return true;
+
+  // Common mass-email sender local parts
+  const massLocalParts = new Set([
+    "info", "hello", "team", "support", "news", "newsletter",
+    "updates", "marketing", "digest", "reply", "bounce",
+  ]);
+  if (massLocalParts.has(local)) return true;
+
+  // Common mass-email domain prefixes (e.g. mail.company.com, em.company.com)
+  if (
+    domain.startsWith("mail.") ||
+    domain.startsWith("email.") ||
+    domain.startsWith("em.") ||
+    domain.startsWith("e.") ||
+    domain.startsWith("bounce.") ||
+    domain.startsWith("send.") ||
+    domain.startsWith("post.")
+  ) return true;
+
+  return false;
+}
+
 // ── Network Contacts CRUD ───────────────────────────────────────────────────
 
 // GET /network — list all network contacts
@@ -458,16 +496,7 @@ networkRoutes.post("/seed", async (c) => {
                 const emailMatch = recipient.match(/<([^>]+)>/);
                 const email = (emailMatch?.[1] ?? recipient).toLowerCase().trim();
 
-                if (
-                  email === userEmail ||
-                  email.includes("noreply") ||
-                  email.includes("no-reply") ||
-                  email.includes("notifications") ||
-                  email.includes("mailer-daemon") ||
-                  email.includes("unsubscribe") ||
-                  !email.includes("@")
-                )
-                  continue;
+                if (isNoiseEmail(email, userEmail)) continue;
 
                 const nameMatch = recipient.match(/^([^<]+)</);
                 const name = nameMatch?.[1]?.trim()?.replace(/"/g, "") ?? "";
@@ -518,15 +547,7 @@ networkRoutes.post("/seed", async (c) => {
 
           for (const row of receivedRows) {
             const email = row.email.toLowerCase().trim();
-            if (
-              email === userEmail ||
-              email.includes("noreply") ||
-              email.includes("no-reply") ||
-              email.includes("notifications") ||
-              email.includes("mailer-daemon") ||
-              email.includes("unsubscribe") ||
-              !email.includes("@")
-            ) continue;
+            if (isNoiseEmail(email, userEmail)) continue;
 
             const existing = recipientCounts.get(email);
             if (existing) {
@@ -697,7 +718,7 @@ networkRoutes.post("/scan-threads", async (c) => {
           // Fetch threads (not messages) — each thread is a conversation
           const listRes: any = await gmail.users.threads.list({
             userId: "me",
-            q: "in:inbox -category:promotions -category:social -category:updates",
+            q: "in:inbox -category:promotions -category:social -category:updates -category:forums",
             maxResults: Math.min(100, THREAD_SCAN_LIMIT - totalFetched),
             pageToken,
           });
@@ -715,7 +736,7 @@ networkRoutes.post("/scan-threads", async (c) => {
                     userId: "me",
                     id: t.id,
                     format: "metadata",
-                    metadataHeaders: ["From", "To", "Date", "Subject"],
+                    metadataHeaders: ["From", "To", "Date", "Subject", "List-Unsubscribe"],
                   })
                   .catch(() => null),
               ),
@@ -743,6 +764,10 @@ networkRoutes.post("/scan-threads", async (c) => {
               const subject = lastHeaders["subject"] ?? "(no subject)";
               const threadId = detail.data.id;
 
+              // Skip newsletters/mass emails — List-Unsubscribe header is the
+              // strongest signal that this is not a personal conversation
+              if (lastHeaders["list-unsubscribe"]) continue;
+
               // Skip if sender is P.J. (he sent last — ball is in their court)
               if (lastSenderEmail === userEmail) {
                 // Check if this is a network contact we should update
@@ -768,15 +793,8 @@ networkRoutes.post("/scan-threads", async (c) => {
                 continue;
               }
 
-              // Skip noise emails
-              if (
-                lastSenderEmail.includes("noreply") ||
-                lastSenderEmail.includes("no-reply") ||
-                lastSenderEmail.includes("notifications") ||
-                lastSenderEmail.includes("mailer-daemon") ||
-                lastSenderEmail.includes("unsubscribe") ||
-                !lastSenderEmail.includes("@")
-              ) continue;
+              // Skip noise / mass-email senders
+              if (isNoiseEmail(lastSenderEmail, userEmail)) continue;
 
               // Only process network contacts
               const contact = networkEmailMap.get(lastSenderEmail);

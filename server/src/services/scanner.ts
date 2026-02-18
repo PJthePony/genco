@@ -184,9 +184,10 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
       }
 
       // Auto-add sender to network contacts if not already there
-      // (only for real emails entering the queue, not briefing/historical)
+      // (only for real emails entering the queue, not briefing/historical/newsletters)
       const senderEmailLower = email.fromEmail.toLowerCase();
-      if (!networkEmailMap.has(senderEmailLower) && !isHistorical && !isBriefingSource) {
+      const hasListUnsub = !!(email.listUnsubscribe);
+      if (!networkEmailMap.has(senderEmailLower) && !isHistorical && !isBriefingSource && !hasListUnsub) {
         try {
           const [newContact] = await db
             .insert(networkContacts)
