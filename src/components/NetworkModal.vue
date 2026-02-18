@@ -34,6 +34,9 @@ const newCompany = ref('')
 const addError = ref('')
 const addLoading = ref(false)
 
+// Contact search (searches both existing contacts and Gmail pool)
+const contactSearch = ref('')
+
 // Seed flow
 const selectedSuggestions = ref(new Set())
 const batchAdding = ref(false)
@@ -120,6 +123,31 @@ function toggleSuggestion(index) {
   }
 }
 
+// Contacts tab: filter existing contacts by search
+const filteredContacts = computed(() => {
+  const q = contactSearch.value.toLowerCase().trim()
+  if (!q) return contacts.value
+  return contacts.value.filter(c =>
+    c.displayName.toLowerCase().includes(q) ||
+    c.email.toLowerCase().includes(q) ||
+    (c.company && c.company.toLowerCase().includes(q))
+  )
+})
+
+// Contacts tab: show matching Gmail suggestions (not already added)
+const contactSearchSuggestions = computed(() => {
+  const q = contactSearch.value.toLowerCase().trim()
+  if (!q || suggestions.value.length === 0) return []
+  const existingEmails = new Set(contacts.value.map(c => c.email.toLowerCase()))
+  return suggestions.value
+    .filter(s =>
+      !existingEmails.has(s.email.toLowerCase()) &&
+      (s.displayName.toLowerCase().includes(q) || s.email.toLowerCase().includes(q))
+    )
+    .slice(0, 5) // limit to top 5 matches
+})
+
+// Discover tab: filter suggestions
 const filteredSuggestions = computed(() => {
   const q = seedSearch.value.toLowerCase().trim()
   if (!q) return suggestions.value
@@ -139,7 +167,9 @@ async function approveSelected() {
         displayName: s.displayName,
       })),
     )
-    suggestions.value = []
+    // Remove added contacts from suggestions so they don't show as duplicates
+    const addedEmails = new Set(selected.map(s => s.email.toLowerCase()))
+    suggestions.value = suggestions.value.filter(s => !addedEmails.has(s.email.toLowerCase()))
     selectedSuggestions.value = new Set()
     seedSearch.value = ''
     activeTab.value = 'contacts'
@@ -224,10 +254,45 @@ async function submitFact() {
 
         <!-- Contacts tab -->
         <div v-if="activeTab === 'contacts'" class="modal-body">
-          <div class="contacts-actions">
-            <button class="btn-add" @click="startAdd" v-if="!adding">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Add contact
+          <!-- Search bar -->
+          <div class="contacts-search-bar">
+            <div class="contacts-search-wrap">
+              <svg class="contacts-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                v-model="contactSearch"
+                type="text"
+                :placeholder="suggestions.length ? 'Search contacts or Gmail history...' : 'Search contacts...'"
+                class="contacts-search-input"
+              />
+            </div>
+            <button class="btn-add-icon" @click="startAdd" v-if="!adding" title="Add manually">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
+
+          <!-- Gmail suggestion matches from search -->
+          <div v-if="contactSearchSuggestions.length > 0" class="search-suggestions">
+            <div class="search-suggestions-label">From Gmail</div>
+            <div v-for="s in contactSearchSuggestions" :key="s.email" class="suggestion-inline">
+              <div class="avatar avatar-sm" :class="avatarColor(s.email)">
+                {{ getInitials(s.displayName, s.email) }}
+              </div>
+              <div class="suggestion-inline-info">
+                <span class="suggestion-inline-name">{{ s.displayName }}</span>
+                <span class="suggestion-inline-email">{{ s.email }}</span>
+              </div>
+              <span class="suggestion-inline-count">{{ s.messageCount }} sent</span>
+              <button class="btn-add-single" @click="addSingleSuggestion(s)" :disabled="addingSingle === s.email">
+                {{ addingSingle === s.email ? '...' : 'Add' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Prompt to scan Gmail if no suggestions loaded yet -->
+          <div v-if="contactSearch && contactSearchSuggestions.length === 0 && suggestions.length === 0 && filteredContacts.length === 0" class="search-scan-hint">
+            <span>Can't find them?</span>
+            <button class="btn-scan-hint" @click="handleSeed" :disabled="seeding">
+              {{ seeding ? 'Scanning...' : 'Scan Gmail to discover contacts' }}
             </button>
           </div>
 
@@ -246,11 +311,15 @@ async function submitFact() {
           </div>
 
           <!-- Contact list -->
-          <div v-if="contacts.length === 0 && !loading" class="empty-contacts">
+          <div v-if="contacts.length === 0 && !loading && !contactSearch" class="empty-contacts">
             <p>No contacts yet. Add people you want to stay in touch with.</p>
           </div>
 
-          <div v-for="contact in contacts" :key="contact.id" class="contact-row">
+          <div v-if="contactSearch && filteredContacts.length === 0 && contactSearchSuggestions.length === 0 && suggestions.length > 0" class="empty-contacts">
+            <p>No matches for "{{ contactSearch }}"</p>
+          </div>
+
+          <div v-for="contact in filteredContacts" :key="contact.id" class="contact-row">
             <div class="avatar" :class="avatarColor(contact.email)">
               {{ getInitials(contact.displayName, contact.email) }}
             </div>
@@ -443,11 +512,128 @@ async function submitFact() {
   flex: 1;
 }
 
-.contacts-actions {
+.contacts-search-bar {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-bottom: 14px;
 }
+
+.contacts-search-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.contacts-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.contacts-search-input {
+  width: 100%;
+  padding: 8px 12px 8px 30px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.contacts-search-input:focus { outline: none; border-color: var(--color-accent-border); }
+
+.btn-add-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.btn-add-icon:hover { color: var(--color-accent); border-color: var(--color-accent-border); }
+
+.search-suggestions {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.search-suggestions-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+
+.suggestion-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.suggestion-inline-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestion-inline-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.suggestion-inline-email {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}
+
+.suggestion-inline-count {
+  font-size: 0.6rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.search-scan-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.btn-scan-hint {
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-scan-hint:hover { color: var(--color-text); }
+.btn-scan-hint:disabled { opacity: 0.6; cursor: default; }
 
 .btn-add, .btn-seed {
   display: flex;
