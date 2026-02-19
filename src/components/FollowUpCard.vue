@@ -265,8 +265,8 @@ defineExpose({ onDraftReady })
 .tag-date_coming_up { background: var(--color-success-soft); color: var(--color-success); }
 
 .compact-approve {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -291,6 +291,12 @@ defineExpose({ onDraftReady })
   padding: 0 0 12px 40px;
   border-bottom: 1px solid var(--color-border);
   animation: fadeIn 0.2s ease;
+}
+
+@media (max-width: 640px) {
+  .expanded-panel {
+    padding-left: 0;
+  }
 }
 
 @keyframes fadeIn {
@@ -334,6 +340,7 @@ defineExpose({ onDraftReady })
 .expanded-actions {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .btn-action {
@@ -453,6 +460,7 @@ defineExpose({ onDraftReady })
   display: flex;
   gap: 8px;
   margin-top: 8px;
+  flex-wrap: wrap;
 }
 
 .btn-draft-save {
@@ -514,5 +522,21 @@ defineExpose({ onDraftReady })
   opacity: 1;
   color: #ef4444;
   border-color: #ef444433;
+}
+
+@media (max-width: 640px) {
+  .btn-action {
+    min-height: 44px;
+  }
+
+  .btn-draft-save,
+  .btn-draft-imessage,
+  .btn-draft-cancel {
+    min-height: 44px;
+  }
+
+  .btn-noise {
+    margin-left: 0;
+  }
 }
 </style>

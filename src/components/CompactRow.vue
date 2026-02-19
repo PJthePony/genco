@@ -165,8 +165,8 @@ function truncate(text, max) {
 }
 
 .compact-approve {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface);

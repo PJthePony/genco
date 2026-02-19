@@ -252,4 +252,18 @@ function handleNoise(id) {
   color: var(--color-success);
   margin-left: auto;
 }
+
+@media (max-width: 640px) {
+  .btn-scan {
+    min-height: 44px;
+  }
+
+  .section-header {
+    padding: 14px 14px;
+  }
+
+  .section-body {
+    padding: 0 14px 8px;
+  }
+}
 </style>

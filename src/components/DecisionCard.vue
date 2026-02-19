@@ -306,6 +306,8 @@ function skipFeedback() {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .sender-org {
@@ -398,6 +400,7 @@ function skipFeedback() {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .btn {
@@ -700,6 +703,37 @@ function skipFeedback() {
 }
 
 .btn-cancel-review:hover { color: var(--color-text-secondary); }
+
+@media (max-width: 640px) {
+  .btn {
+    min-height: 44px;
+  }
+
+  .btn-alt {
+    min-height: 44px;
+  }
+
+  .btn-feedback-send,
+  .btn-feedback-skip {
+    min-height: 44px;
+  }
+
+  .btn-send-reply,
+  .btn-cancel-review {
+    min-height: 44px;
+  }
+
+  .card-subject {
+    word-break: break-word;
+  }
+
+  .sender-org {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 120px;
+  }
+}
 
 @media (min-width: 641px) {
   .card { padding: 20px; }

@@ -82,8 +82,8 @@ defineEmits(['close'])
 }
 
 .modal-close {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -108,6 +108,7 @@ defineEmits(['close'])
   gap: 8px;
   font-size: 0.75rem;
   line-height: 1.6;
+  min-width: 0;
 }
 
 .modal-meta-label {
@@ -118,6 +119,10 @@ defineEmits(['close'])
 
 .modal-meta-value {
   color: var(--color-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal-body {

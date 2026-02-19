@@ -284,4 +284,30 @@ function handleSkip(cardId) {
   font-size: 0.75rem;
   color: var(--color-text-muted);
 }
+
+@media (max-width: 640px) {
+  .btn-bulk {
+    min-height: 44px;
+  }
+
+  .btn-collapse {
+    min-height: 44px;
+  }
+
+  .section-header {
+    min-height: 44px;
+  }
+
+  .section-body {
+    padding: 0 14px 8px;
+  }
+
+  .bulk-bar {
+    padding: 8px 14px;
+  }
+
+  .section-header {
+    padding: 14px 14px;
+  }
+}
 </style>

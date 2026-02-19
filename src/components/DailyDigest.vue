@@ -163,12 +163,17 @@ function toggle() { expanded.value = !expanded.value }
   align-items: center;
   gap: 8px;
   margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .briefing-item-source {
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--color-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .briefing-item-tag {
@@ -273,5 +278,21 @@ function toggle() { expanded.value = !expanded.value }
   font-size: 0.75rem;
   color: var(--color-text-muted);
   border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 640px) {
+  .briefing-item-view,
+  .briefing-item-action {
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px;
+  }
+
+  .briefing-footer-action {
+    min-height: 44px;
+  }
 }
 </style>

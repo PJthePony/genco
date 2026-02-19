@@ -489,6 +489,12 @@ async function submitFact() {
   color: var(--color-text-muted);
   cursor: pointer;
   padding: 4px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .btn-close:hover { color: var(--color-text); }
@@ -811,8 +817,8 @@ async function submitFact() {
 }
 
 .btn-fact, .btn-remove {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -1021,5 +1027,71 @@ async function submitFact() {
 .seed-rescan {
   flex-direction: column;
   align-items: center;
+}
+
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 10px;
+  }
+
+  .modal-content {
+    max-height: 90vh;
+  }
+
+  .modal-body {
+    padding: 14px 16px;
+  }
+
+  .btn-add-single {
+    min-height: 44px;
+    padding: 6px 12px;
+  }
+
+  .btn-submit {
+    min-height: 44px;
+  }
+
+  .btn-cancel {
+    min-height: 44px;
+  }
+
+  .btn-seed {
+    min-height: 44px;
+  }
+
+  .btn-add-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .tab {
+    min-height: 44px;
+  }
+
+  .contact-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .suggestion-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .suggestion-inline-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .seed-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .fact-form {
+    padding-left: 0;
+  }
 }
 </style>

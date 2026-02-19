@@ -262,4 +262,18 @@ const handleSubmit = async () => {
 .login-legal a:hover {
   color: var(--color-primary);
 }
+
+@media (max-width: 640px) {
+  .login-card {
+    padding: 36px 24px;
+  }
+
+  .login-btn {
+    min-height: 44px;
+  }
+
+  .form-group input {
+    min-height: 44px;
+  }
+}
 </style>

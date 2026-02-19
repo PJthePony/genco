@@ -84,4 +84,11 @@ defineEmits(['open-settings', 'logout'])
   background: var(--color-bg);
   color: var(--color-text);
 }
+
+@media (max-width: 640px) {
+  .header-btn {
+    width: 44px;
+    height: 44px;
+  }
+}
 </style>

@@ -307,8 +307,8 @@ function timeAgo(timestamp) {
 }
 
 .modal-close {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -363,6 +363,8 @@ function timeAgo(timestamp) {
   padding: 10px 0;
   border-bottom: 1px solid var(--color-border);
   font-size: 0.82rem;
+  gap: 8px;
+  min-width: 0;
 }
 
 .settings-row:last-child { border-bottom: none; }
@@ -374,6 +376,10 @@ function timeAgo(timestamp) {
 .settings-value {
   font-size: 0.78rem;
   color: var(--color-text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-value.tag-sale { color: var(--color-accent); }
@@ -387,8 +393,8 @@ function timeAgo(timestamp) {
 }
 
 .settings-remove {
-  width: 22px;
-  height: 22px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -700,5 +706,30 @@ function timeAgo(timestamp) {
 .btn-connect:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+@media (max-width: 640px) {
+  .btn-reconnect {
+    min-height: 44px;
+    padding: 6px 12px;
+  }
+
+  .btn-connect {
+    min-height: 44px;
+  }
+
+  .btn-add-cancel,
+  .btn-add-confirm {
+    min-height: 44px;
+  }
+
+  .btn-clear-feedback {
+    min-height: 44px;
+  }
+
+  .settings-row-right {
+    min-width: 0;
+    flex-shrink: 1;
+  }
 }
 </style>
