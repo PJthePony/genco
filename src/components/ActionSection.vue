@@ -86,8 +86,8 @@ function handleSkip(cardId) {
       </div>
     </div>
 
-    <!-- Bulk approve bar -->
-    <div v-if="expanded && section.count > 1" class="bulk-bar">
+    <!-- Bulk approve bar (archive section only — action items need individual review) -->
+    <div v-if="expanded && section.count > 1 && section.key === 'archive'" class="bulk-bar">
       <button
         class="btn-bulk"
         @click.stop="$emit('bulk-approve', section.key)"
