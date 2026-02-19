@@ -42,14 +42,17 @@ watch(() => props.items.length, (len) => {
       <template v-else>
         <div class="briefing-digest-items">
           <div class="briefing-item" v-for="(item, i) in items" :key="item.id || i">
-            <div class="briefing-item-header">
-              <span class="briefing-item-source">{{ item.source }}</span>
-              <span class="briefing-item-tag" :class="item.tagClass">{{ item.tag }}</span>
-              <span class="briefing-item-time">{{ timeAgo(item.receivedAt) }}</span>
-              <button class="briefing-item-view" @click.stop="$emit('open-email', item.id)">View</button>
-              <button class="briefing-item-action" @click.stop="$emit('promote', item.id)">Action</button>
+            <div class="briefing-item-content" @click="$emit('open-email', item.id)">
+              <div class="briefing-item-header">
+                <span class="briefing-item-source">{{ item.source }}</span>
+                <span class="briefing-item-tag" :class="item.tagClass">{{ item.tag }}</span>
+                <span class="briefing-item-time">{{ timeAgo(item.receivedAt) }}</span>
+              </div>
+              <div class="briefing-item-summary">{{ item.summary }}</div>
             </div>
-            <div class="briefing-item-summary">{{ item.summary }}</div>
+            <button class="briefing-item-promote" @click.stop="$emit('promote', item.id)" title="Move to action queue" aria-label="Move to action queue">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+            </button>
           </div>
         </div>
         <div class="briefing-digest-footer">
@@ -157,18 +160,27 @@ watch(() => props.items.length, (len) => {
 }
 
 .briefing-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 12px 0;
   border-bottom: 1px solid var(--color-border);
 }
 
 .briefing-item:last-child { border-bottom: none; }
 
+.briefing-item-content {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .briefing-item-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
-  flex-wrap: wrap;
+  margin-bottom: 2px;
 }
 
 .briefing-item-source {
@@ -188,6 +200,7 @@ watch(() => props.items.length, (len) => {
   border-radius: 100px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
 
 .tag-sale { background: var(--color-accent-soft); color: var(--color-accent); }
@@ -198,53 +211,39 @@ watch(() => props.items.length, (len) => {
   font-size: 0.62rem;
   color: var(--color-text-muted);
   white-space: nowrap;
-}
-
-.briefing-item-view {
-  margin-left: auto;
-  font-size: 0.65rem;
-  font-weight: 500;
-  font-family: inherit;
-  color: var(--color-text-muted);
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 2px 8px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  -webkit-tap-highlight-color: transparent;
-}
-
-.briefing-item-view:hover {
-  color: var(--color-blue);
-  border-color: var(--color-blue-soft);
-  background: var(--color-blue-soft);
-}
-
-.briefing-item-action {
-  font-size: 0.65rem;
-  font-weight: 500;
-  font-family: inherit;
-  color: var(--color-text-muted);
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 2px 8px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  -webkit-tap-highlight-color: transparent;
-}
-
-.briefing-item-action:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent-border);
-  background: var(--color-accent-soft);
+  flex-shrink: 0;
 }
 
 .briefing-item-summary {
   font-size: 0.78rem;
   color: var(--color-text-secondary);
-  line-height: 1.55;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.briefing-item-promote {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+
+.briefing-item-promote:hover,
+.briefing-item-promote:active {
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
 }
 
 .briefing-digest-footer {
@@ -299,14 +298,8 @@ watch(() => props.items.length, (len) => {
   }
 
   .briefing-item-source {
-    max-width: 40%;
+    max-width: 50%;
     flex-shrink: 1;
-  }
-
-  .briefing-item-view,
-  .briefing-item-action {
-    padding: 10px 12px;
-    min-height: 44px;
   }
 
   .briefing-item-summary {
