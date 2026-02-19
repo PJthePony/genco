@@ -543,7 +543,7 @@ onUnmounted(() => {
 }
 
 .app-body {
-  max-width: 540px;
+  max-width: 720px;
   margin: 0 auto;
   padding: 20px 16px 100px;
 }
@@ -553,17 +553,17 @@ onUnmounted(() => {
 }
 
 .briefing-date {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   margin-bottom: 4px;
 }
 
 .briefing-title {
-  font-size: 1.15rem;
-  font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 2px;
 }
@@ -749,7 +749,7 @@ onUnmounted(() => {
 
 @media (min-width: 641px) {
   .app-body {
-    padding: 28px 20px 100px;
+    padding: 2rem 2rem 4rem;
   }
 }
 </style>
