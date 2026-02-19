@@ -150,7 +150,7 @@ watch(() => props.items.length, (len) => {
 }
 
 .briefing-digest.expanded .briefing-digest-body {
-  max-height: 60vh;
+  max-height: 80vh;
   overflow-y: auto;
 }
 
@@ -161,9 +161,9 @@ watch(() => props.items.length, (len) => {
 
 .briefing-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 12px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -217,10 +217,7 @@ watch(() => props.items.length, (len) => {
 .briefing-item-summary {
   font-size: 0.78rem;
   color: var(--color-text-secondary);
-  line-height: 1.45;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.55;
 }
 
 .briefing-item-promote {
