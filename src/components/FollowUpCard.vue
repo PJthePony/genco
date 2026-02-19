@@ -525,18 +525,86 @@ defineExpose({ onDraftReady })
 }
 
 @media (max-width: 640px) {
-  .btn-action {
-    min-height: 44px;
+  .compact-row {
+    gap: 8px;
+    padding: 10px 0;
   }
 
-  .btn-draft-save,
-  .btn-draft-imessage,
-  .btn-draft-cancel {
-    min-height: 44px;
+  .compact-sender {
+    font-size: 0.72rem;
+  }
+
+  .compact-subject {
+    font-size: 0.68rem;
+  }
+
+  .compact-summary {
+    font-size: 0.65rem;
+  }
+
+  .compact-right {
+    gap: 4px;
+  }
+
+  .compact-tag {
+    font-size: 0.5rem;
+    padding: 2px 5px;
+  }
+
+  .compact-approve {
+    width: 40px;
+    height: 40px;
+  }
+
+  .expanded-panel {
+    padding-left: 0;
+  }
+
+  .expanded-actions {
+    gap: 6px;
+  }
+
+  .btn-action {
+    padding: 10px 10px;
+    font-size: 0.65rem;
+    gap: 3px;
+  }
+
+  .btn-action svg {
+    width: 11px;
+    height: 11px;
+    flex-shrink: 0;
   }
 
   .btn-noise {
     margin-left: 0;
+  }
+
+  .draft-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .btn-draft-save,
+  .btn-draft-imessage {
+    padding: 10px 12px;
+    font-size: 0.68rem;
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .btn-draft-cancel {
+    padding: 10px 12px;
+    font-size: 0.68rem;
+  }
+
+  .draft-textarea {
+    font-size: 0.72rem;
+  }
+
+  .snooze-dropdown button {
+    padding: 12px 16px;
+    font-size: 0.72rem;
   }
 }
 </style>

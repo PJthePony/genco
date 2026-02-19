@@ -254,16 +254,35 @@ function handleNoise(id) {
 }
 
 @media (max-width: 640px) {
-  .btn-scan {
-    min-height: 44px;
+  .section-header {
+    padding: 12px 14px;
   }
 
-  .section-header {
-    padding: 14px 14px;
+  .section-sublabel {
+    font-size: 0.65rem;
+  }
+
+  .section-header-right {
+    gap: 6px;
+    flex-shrink: 0;
   }
 
   .section-body {
     padding: 0 14px 8px;
+  }
+
+  .btn-scan {
+    padding: 10px 18px;
+  }
+
+  .scan-progress {
+    padding: 14px 0;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .empty-state {
+    padding: 14px 0 8px;
   }
 }
 </style>

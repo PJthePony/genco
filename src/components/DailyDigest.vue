@@ -281,18 +281,45 @@ function toggle() { expanded.value = !expanded.value }
 }
 
 @media (max-width: 640px) {
+  .briefing-digest-header {
+    padding: 12px 14px;
+  }
+
+  .briefing-digest-items {
+    padding: 0 14px 12px;
+  }
+
+  .briefing-item-header {
+    gap: 6px;
+  }
+
+  .briefing-item-source {
+    max-width: 40%;
+    flex-shrink: 1;
+  }
+
   .briefing-item-view,
   .briefing-item-action {
-    min-height: 44px;
-    min-width: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 6px 10px;
+    padding: 10px 12px;
+    font-size: 0.68rem;
+  }
+
+  .briefing-item-summary {
+    font-size: 0.75rem;
+  }
+
+  .briefing-digest-footer {
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .briefing-footer-action {
-    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .briefing-digest-empty {
+    padding: 16px 14px;
   }
 }
 </style>

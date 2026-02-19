@@ -185,4 +185,42 @@ function truncate(text, max) {
   border-color: var(--color-success);
   background: var(--color-success-soft);
 }
+
+@media (max-width: 640px) {
+  .compact-row {
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .compact-row.urgent {
+    margin-left: -10px;
+    padding-left: 8px;
+  }
+
+  .compact-sender {
+    font-size: 0.72rem;
+  }
+
+  .compact-subject {
+    font-size: 0.68rem;
+  }
+
+  .compact-summary {
+    font-size: 0.65rem;
+  }
+
+  .compact-right {
+    gap: 4px;
+  }
+
+  .compact-tag {
+    font-size: 0.5rem;
+    padding: 2px 5px;
+  }
+
+  .compact-approve {
+    width: 40px;
+    height: 40px;
+  }
+}
 </style>

@@ -705,13 +705,46 @@ function skipFeedback() {
 .btn-cancel-review:hover { color: var(--color-text-secondary); }
 
 @media (max-width: 640px) {
-  .btn {
-    min-height: 44px;
+  .card {
+    padding: 14px;
+  }
+
+  .card-sender {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .sender-name {
+    font-size: 0.75rem;
+    gap: 4px;
+  }
+
+  .sender-org {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100px;
+  }
+
+  .card-subject {
+    font-size: 0.8rem;
+    word-break: break-word;
+  }
+
+  .card-summary {
+    font-size: 0.75rem;
+    margin-bottom: 12px;
   }
 
   /* Lock action buttons into a consistent position on every card */
   .card-actions {
+    gap: 6px;
     flex-wrap: nowrap;
+  }
+
+  .btn {
+    padding: 10px 14px;
+    font-size: 0.75rem;
   }
 
   .btn-approve {
@@ -722,39 +755,54 @@ function skipFeedback() {
     white-space: nowrap;
   }
 
-  .btn-change,
+  .btn-change {
+    padding: 10px 12px;
+    flex-shrink: 0;
+  }
+
   .btn-skip {
+    padding: 10px 8px;
     flex-shrink: 0;
   }
 
   .alt-actions {
-    gap: 8px;
+    gap: 6px;
   }
 
   .btn-alt {
-    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 0.72rem;
     flex: 1 1 auto;
   }
 
-  .btn-feedback-send,
+  .btn-back {
+    padding: 10px 12px;
+  }
+
+  .feedback-input {
+    font-size: 0.75rem;
+    padding: 10px 12px;
+  }
+
+  .btn-feedback-send {
+    padding: 10px 14px;
+  }
+
   .btn-feedback-skip {
-    min-height: 44px;
+    padding: 10px 12px;
   }
 
-  .btn-send-reply,
+  .review-textarea {
+    font-size: 0.78rem;
+    padding: 10px 12px;
+  }
+
+  .btn-send-reply {
+    padding: 10px 16px;
+  }
+
   .btn-cancel-review {
-    min-height: 44px;
-  }
-
-  .card-subject {
-    word-break: break-word;
-  }
-
-  .sender-org {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 120px;
+    padding: 10px 12px;
   }
 }
 

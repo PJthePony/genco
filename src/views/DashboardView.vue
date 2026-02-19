@@ -715,6 +715,42 @@ onUnmounted(() => {
   transition: transform 0.1s ease-out;
 }
 
+@media (max-width: 640px) {
+  .app-body {
+    padding: 16px 12px 80px;
+  }
+
+  .briefing-header {
+    margin-bottom: 16px;
+  }
+
+  .briefing-title {
+    font-size: 1.05rem;
+  }
+
+  .briefing-stats {
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .briefing-stat {
+    font-size: 0.75rem;
+  }
+
+  .btn-scan {
+    padding: 10px 16px;
+    font-size: 0.75rem;
+  }
+
+  .btn-retry {
+    padding: 10px 16px;
+  }
+
+  .action-buttons {
+    margin-bottom: 16px;
+  }
+}
+
 @media (min-width: 641px) {
   .app-body {
     padding: 28px 20px 100px;

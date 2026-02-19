@@ -286,16 +286,27 @@ function handleSkip(cardId) {
 }
 
 @media (max-width: 640px) {
+  .section-header {
+    padding: 12px 14px;
+  }
+
+  .section-sublabel {
+    font-size: 0.65rem;
+  }
+
+  .section-header-right {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
   .btn-bulk {
-    min-height: 44px;
+    padding: 10px 18px;
+    width: 100%;
+    justify-content: center;
   }
 
   .btn-collapse {
-    min-height: 44px;
-  }
-
-  .section-header {
-    min-height: 44px;
+    padding: 10px 0;
   }
 
   .section-body {
@@ -304,10 +315,6 @@ function handleSkip(cardId) {
 
   .bulk-bar {
     padding: 8px 14px;
-  }
-
-  .section-header {
-    padding: 14px 14px;
   }
 }
 </style>
