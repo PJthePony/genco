@@ -313,28 +313,49 @@ export async function hasUserRepliedToThread(
     const messages = thread.data.messages ?? [];
     const userEmailLower = userEmail.toLowerCase();
 
-    for (const msg of messages) {
+    // Parse all messages with their sender and date
+    const parsed = messages.map((msg) => {
       const headers: Record<string, string> = {};
       for (const h of msg.payload?.headers ?? []) {
         if (h.name && h.value) {
           headers[h.name.toLowerCase()] = h.value;
         }
       }
-
       const from = headers["from"] ?? "";
       const { email: senderEmail } = parseFromHeader(from);
       const msgDate = headers["date"] ? new Date(headers["date"]) : new Date(0);
+      return { senderEmail: senderEmail.toLowerCase(), msgDate };
+    });
 
-      // Check if this message is from the user and is after the incoming email
+    // Find P.J.'s latest reply after the incoming message
+    let latestUserReply: Date | null = null;
+    for (const m of parsed) {
       if (
-        senderEmail.toLowerCase() === userEmailLower &&
-        msgDate.getTime() > afterDate.getTime()
+        m.senderEmail === userEmailLower &&
+        m.msgDate.getTime() > afterDate.getTime()
       ) {
-        return true;
+        if (!latestUserReply || m.msgDate.getTime() > latestUserReply.getTime()) {
+          latestUserReply = m.msgDate;
+        }
       }
     }
 
-    return false;
+    // P.J. never replied after this message — not replied
+    if (!latestUserReply) return false;
+
+    // P.J. replied, but did someone else follow up after that?
+    // If so, it's a new message needing attention — treat as not replied.
+    for (const m of parsed) {
+      if (
+        m.senderEmail !== userEmailLower &&
+        m.msgDate.getTime() > latestUserReply.getTime()
+      ) {
+        return false;
+      }
+    }
+
+    // P.J.'s reply is the last word in the thread — already handled
+    return true;
   } catch (err) {
     // If thread lookup fails, don't block — assume not replied
     console.warn(`Thread reply check failed for ${threadId}:`, err);
