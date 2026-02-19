@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, ne, desc, isNotNull, gte, or, inArray, count } from "drizzle-orm";
+import { eq, and, desc, isNotNull, gte, or, inArray, count } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { emailQueue, gmailConnections } from "../db/schema.js";
@@ -81,7 +81,6 @@ queueRoutes.get("/count", async (c) => {
         eq(emailQueue.userId, user.sub),
         eq(emailQueue.status, "pending"),
         isNotNull(emailQueue.aiSummary),
-        ne(emailQueue.aiRecommendedAction, "briefing"),
       ),
     );
 

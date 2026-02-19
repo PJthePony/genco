@@ -28,9 +28,10 @@ watch(() => props.section.cards, (cards) => {
   }
 })
 
-// Auto-collapse when section becomes empty
-watch(() => props.section.count, (count) => {
+// Auto-collapse when empty, auto-expand when items appear
+watch(() => props.section.count, (count, oldCount) => {
   if (count === 0) expanded.value = false
+  else if (oldCount === 0 && count > 0) expanded.value = true
 })
 
 const bulkLabel = computed(() => {
