@@ -709,8 +709,31 @@ function skipFeedback() {
     min-height: 44px;
   }
 
+  /* Lock action buttons into a consistent position on every card */
+  .card-actions {
+    flex-wrap: nowrap;
+  }
+
+  .btn-approve {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .btn-change,
+  .btn-skip {
+    flex-shrink: 0;
+  }
+
+  .alt-actions {
+    gap: 8px;
+  }
+
   .btn-alt {
     min-height: 44px;
+    flex: 1 1 auto;
   }
 
   .btn-feedback-send,
