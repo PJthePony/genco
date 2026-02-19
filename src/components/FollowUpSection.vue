@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import FollowUpCard from './FollowUpCard.vue'
 
 const props = defineProps({
@@ -14,6 +14,11 @@ const expanded = ref(props.items.length > 0)
 const expandedCardId = ref(null)
 
 function toggle() { expanded.value = !expanded.value }
+
+// Auto-collapse when section becomes empty
+watch(() => props.items.length, (len) => {
+  if (len === 0) expanded.value = false
+})
 
 function toggleCard(id) {
   expandedCardId.value = expandedCardId.value === id ? null : id

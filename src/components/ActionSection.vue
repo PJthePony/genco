@@ -28,6 +28,11 @@ watch(() => props.section.cards, (cards) => {
   }
 })
 
+// Auto-collapse when section becomes empty
+watch(() => props.section.count, (count) => {
+  if (count === 0) expanded.value = false
+})
+
 const bulkLabel = computed(() => {
   const n = props.section.count
   if (props.section.key === 'archive') return `Archive all ${n}`

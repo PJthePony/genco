@@ -436,7 +436,7 @@ onUnmounted(() => {
     <div class="app-body" :style="{ transform: `translateY(${pullDistance}px)` }"  >
       <div class="briefing-header">
         <div class="briefing-date">{{ dateStr }}</div>
-        <h1 class="briefing-title">Morning Briefing</h1>
+        <h1 class="briefing-title">The Sit-Down</h1>
         <div class="briefing-stats">
           <div class="briefing-stat"><strong>{{ remaining }}</strong> to review</div>
           <div v-if="urgentCount > 0" class="briefing-stat urgent"><strong>{{ urgentCount }}</strong> urgent</div>

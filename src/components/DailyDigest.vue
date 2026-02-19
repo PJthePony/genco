@@ -1,8 +1,8 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { timeAgo } from '../lib/formatters.js'
 
-defineProps({
+const props = defineProps({
   items: Array,
 })
 
@@ -11,6 +11,11 @@ defineEmits(['manage-sources', 'promote', 'open-email'])
 const expanded = ref(false)
 
 function toggle() { expanded.value = !expanded.value }
+
+// Auto-collapse when section becomes empty
+watch(() => props.items.length, (len) => {
+  if (len === 0) expanded.value = false
+})
 </script>
 
 <template>
