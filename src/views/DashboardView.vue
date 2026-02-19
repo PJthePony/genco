@@ -5,6 +5,7 @@ import { useFeedback } from '../composables/useFeedback'
 import { useGroupedQueue } from '../composables/useGroupedQueue'
 import { useDigest } from '../composables/useDigest'
 import { useNetwork } from '../composables/useNetwork'
+import { useUnread } from '../composables/useUnread'
 import { api } from '../composables/useApi'
 import AppHeader from '../components/AppHeader.vue'
 import ActionSection from '../components/ActionSection.vue'
@@ -20,6 +21,7 @@ const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback }
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
 const { items: digestItems, fetchDigest } = useDigest()
 const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
+const { markSeen, startPolling, stopPolling } = useUnread()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
@@ -284,6 +286,7 @@ async function handleFeedback(entry) {
 async function handleScan() {
   try {
     await Promise.all([scanInbox(), scanThreads()])
+    markSeen()
     await fetchDigest()
     showToast('Scan complete')
   } catch (err) {
@@ -411,15 +414,18 @@ onMounted(async () => {
   document.addEventListener('touchend', onTouchEnd)
 
   await fetchQueue()
+  markSeen()
   await fetchDigest()
   fetchFollowUps()
   loadBriefingSources()
+  startPolling()
 })
 
 onUnmounted(() => {
   document.removeEventListener('touchstart', onTouchStart)
   document.removeEventListener('touchmove', onTouchMove)
   document.removeEventListener('touchend', onTouchEnd)
+  stopPolling()
 })
 </script>
 

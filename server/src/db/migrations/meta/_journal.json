@@ -43,6 +43,13 @@
       "when": 1771458468341,
       "tag": "0005_light_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771533910004,
+      "tag": "0006_parallel_living_mummy",
+      "breakpoints": true
     }
   ]
 }

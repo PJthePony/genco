@@ -23,9 +23,7 @@ settingsRoutes.get("/preferences", async (c) => {
   });
 
   return c.json({
-    scanFrequency: prefs?.scanFrequency ?? "hourly",
-    urgentSmsEnabled: prefs?.urgentSmsEnabled ?? false,
-    phoneNumber: prefs?.phoneNumber ?? null,
+    scanFrequency: prefs?.scanFrequency ?? "10min",
   });
 });
 
@@ -34,8 +32,6 @@ settingsRoutes.put("/preferences", async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{
     scanFrequency?: string;
-    urgentSmsEnabled?: boolean;
-    phoneNumber?: string | null;
   }>();
 
   const existing = await db.query.userPreferences.findFirst({
@@ -49,21 +45,13 @@ settingsRoutes.put("/preferences", async (c) => {
         ...(body.scanFrequency !== undefined && {
           scanFrequency: body.scanFrequency,
         }),
-        ...(body.urgentSmsEnabled !== undefined && {
-          urgentSmsEnabled: body.urgentSmsEnabled,
-        }),
-        ...(body.phoneNumber !== undefined && {
-          phoneNumber: body.phoneNumber,
-        }),
         updatedAt: new Date(),
       })
       .where(eq(userPreferences.id, existing.id));
   } else {
     await db.insert(userPreferences).values({
       userId: user.sub,
-      scanFrequency: body.scanFrequency ?? "hourly",
-      urgentSmsEnabled: body.urgentSmsEnabled ?? false,
-      phoneNumber: body.phoneNumber ?? null,
+      scanFrequency: body.scanFrequency ?? "10min",
     });
   }
 

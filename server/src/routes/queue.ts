@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, ne, desc, isNotNull, gte, or, inArray } from "drizzle-orm";
+import { eq, and, ne, desc, isNotNull, gte, or, inArray, count } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { emailQueue, gmailConnections } from "../db/schema.js";
@@ -57,6 +57,25 @@ queueRoutes.get("/", async (c) => {
   });
 
   return c.json({ items, total: items.length });
+});
+
+// GET /queue/count — lightweight count of actionable items (for polling/badge)
+queueRoutes.get("/count", async (c) => {
+  const user = c.get("user");
+
+  const [result] = await db
+    .select({ count: count() })
+    .from(emailQueue)
+    .where(
+      and(
+        eq(emailQueue.userId, user.sub),
+        eq(emailQueue.status, "pending"),
+        isNotNull(emailQueue.aiSummary),
+        ne(emailQueue.aiRecommendedAction, "briefing"),
+      ),
+    );
+
+  return c.json({ count: result?.count ?? 0 });
 });
 
 // GET /queue/digest — briefing source items for daily digest

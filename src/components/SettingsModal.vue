@@ -100,9 +100,47 @@ async function connectGmail() {
   }
 }
 
-// Load Gmail status when settings modal opens
+// ── Scan Frequency ──
+const scanFrequency = ref('10min')
+const savingFrequency = ref(false)
+
+const FREQUENCY_OPTIONS = [
+  { value: '10min', label: 'Every 10 minutes' },
+  { value: '30min', label: 'Every 30 minutes' },
+  { value: 'hourly', label: 'Every hour' },
+]
+
+async function loadPreferences() {
+  try {
+    const data = await api('/settings/preferences')
+    scanFrequency.value = data.scanFrequency || '10min'
+  } catch (err) {
+    console.error('Failed to load preferences:', err)
+  }
+}
+
+async function updateScanFrequency(event) {
+  const newValue = event.target.value
+  scanFrequency.value = newValue
+  savingFrequency.value = true
+  try {
+    await api('/settings/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ scanFrequency: newValue }),
+    })
+  } catch (err) {
+    console.error('Failed to save scan frequency:', err)
+  } finally {
+    savingFrequency.value = false
+  }
+}
+
+// Load Gmail status and preferences when settings modal opens
 watch(() => props.open, (isOpen) => {
-  if (isOpen) loadGmailStatus()
+  if (isOpen) {
+    loadGmailStatus()
+    loadPreferences()
+  }
 })
 
 const recentFeedback = computed(() =>
@@ -152,8 +190,12 @@ function timeAgo(timestamp) {
         </div>
         <div class="settings-group">
           <div class="settings-label">Scan Frequency</div>
-          <div class="settings-row"><span>Check inbox</span> <span class="settings-value">Every hour</span></div>
-          <div class="settings-row"><span>Urgent SMS alerts</span> <span class="settings-value">Enabled</span></div>
+          <div class="settings-row">
+            <span>Check inbox</span>
+            <select class="settings-select" :value="scanFrequency" @change="updateScanFrequency" :disabled="savingFrequency">
+              <option v-for="opt in FREQUENCY_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </div>
         </div>
         <div class="settings-group">
           <div class="settings-label">Daily Briefing Sources</div>
@@ -246,11 +288,6 @@ function timeAgo(timestamp) {
           </template>
         </div>
 
-        <div class="settings-group">
-          <div class="settings-label">Integrations</div>
-          <div class="settings-row"><span>Tessio</span> <span class="settings-value">Connected</span></div>
-          <div class="settings-row"><span>Luca</span> <span class="settings-value">Connected</span></div>
-        </div>
       </div>
     </div>
   </div>
@@ -385,6 +422,30 @@ function timeAgo(timestamp) {
 .settings-value.tag-sale { color: var(--color-accent); }
 .settings-value.tag-news { color: var(--color-blue); }
 .settings-value.tag-update { color: var(--color-purple); }
+
+.settings-select {
+  font-size: 0.78rem;
+  font-family: inherit;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.settings-select:focus {
+  border-color: var(--color-accent);
+}
+
+.settings-select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 
 .settings-row-right {
   display: flex;
@@ -725,6 +786,11 @@ function timeAgo(timestamp) {
 
   .btn-clear-feedback {
     min-height: 44px;
+  }
+
+  .settings-select {
+    min-height: 44px;
+    padding: 6px 10px;
   }
 
   .settings-row-right {

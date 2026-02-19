@@ -1,22 +1,41 @@
 import { db } from "../db/index.js";
-import { gmailConnections } from "../db/schema.js";
+import { gmailConnections, userPreferences } from "../db/schema.js";
 import { scanInbox } from "./scanner.js";
 import { classifyPendingEmails } from "./classifier.js";
 import { pruneProcessedEmails } from "./cleanup.js";
 import { detectFollowUps } from "./followup.js";
 
-const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const FREQUENCY_MS: Record<string, number> = {
+  "10min": 10 * 60 * 1000,
+  "30min": 30 * 60 * 1000,
+  hourly: 60 * 60 * 1000,
+};
+const DEFAULT_INTERVAL_MS = FREQUENCY_MS["10min"];
 const FOLLOW_UP_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-let intervalId: ReturnType<typeof setInterval> | null = null;
+let timeoutId: ReturnType<typeof setTimeout> | null = null;
 let lastFollowUpCheck = 0;
+let running = false;
+
+/**
+ * Read the scan frequency from user preferences.
+ * Falls back to 10 minutes if no preference is set.
+ */
+async function getScanIntervalMs(): Promise<number> {
+  try {
+    const pref = await db.query.userPreferences.findFirst();
+    return FREQUENCY_MS[pref?.scanFrequency ?? ""] ?? DEFAULT_INTERVAL_MS;
+  } catch {
+    return DEFAULT_INTERVAL_MS;
+  }
+}
 
 /**
  * Scan all connected Gmail accounts.
  * Called on a schedule to keep the queue fresh.
  */
 async function scanAllAccounts(): Promise<void> {
-  console.log("[Scheduler] Starting hourly scan for all accounts...");
+  console.log("[Scheduler] Starting scan for all accounts...");
 
   try {
     // Get all connected Gmail accounts
@@ -74,44 +93,58 @@ async function scanAllAccounts(): Promise<void> {
       }
     }
 
-    console.log("[Scheduler] Hourly scan complete.");
+    console.log("[Scheduler] Scan complete.");
   } catch (err) {
     console.error("[Scheduler] Scan all accounts failed:", err);
   }
 }
 
 /**
- * Start the hourly scan scheduler.
+ * Schedule the next scan, reading the user's preferred interval.
  */
-export function startScheduler(): void {
-  if (intervalId) return; // Already running
+async function scheduleNext(): Promise<void> {
+  if (!running) return;
 
-  console.log(
-    `[Scheduler] Started — scanning every ${SCAN_INTERVAL_MS / 60000} minutes`,
-  );
+  const intervalMs = await getScanIntervalMs();
 
-  // Run immediately on startup (with a small delay to let server boot)
-  setTimeout(() => {
-    scanAllAccounts().catch((err) =>
-      console.error("[Scheduler] Initial scan failed:", err),
-    );
-  }, 10_000);
-
-  // Then run on interval
-  intervalId = setInterval(() => {
-    scanAllAccounts().catch((err) =>
+  timeoutId = setTimeout(async () => {
+    await scanAllAccounts().catch((err) =>
       console.error("[Scheduler] Scheduled scan failed:", err),
     );
-  }, SCAN_INTERVAL_MS);
+    scheduleNext();
+  }, intervalMs);
+
+  console.log(
+    `[Scheduler] Next scan in ${intervalMs / 60000} minutes`,
+  );
+}
+
+/**
+ * Start the scan scheduler.
+ */
+export function startScheduler(): void {
+  if (running) return;
+  running = true;
+
+  console.log("[Scheduler] Started");
+
+  // Run immediately on startup (with a small delay to let server boot)
+  setTimeout(async () => {
+    await scanAllAccounts().catch((err) =>
+      console.error("[Scheduler] Initial scan failed:", err),
+    );
+    scheduleNext();
+  }, 10_000);
 }
 
 /**
  * Stop the scheduler (for graceful shutdown).
  */
 export function stopScheduler(): void {
-  if (intervalId) {
-    clearInterval(intervalId);
-    intervalId = null;
-    console.log("[Scheduler] Stopped.");
+  running = false;
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+    timeoutId = null;
   }
+  console.log("[Scheduler] Stopped.");
 }

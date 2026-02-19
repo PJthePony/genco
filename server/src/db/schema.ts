@@ -49,14 +49,16 @@ export const emailQueue = pgTable(
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     aiSummary: text("ai_summary"),
     aiRecommendedAction: text("ai_recommended_action"),
+    aiRecommendedSubAction: text("ai_recommended_sub_action"),
     aiPriority: text("ai_priority"),
-    aiReplyDraft: text("ai_reply_draft"),
+    aiReplyDraft: text("ai_reply_draft"), // repurposed: stores one-line reply summary, not full draft
     aiTaskTitle: text("ai_task_title"),
     listUnsubscribe: text("list_unsubscribe"),
     listUnsubscribePost: text("list_unsubscribe_post"),
     isUrgent: boolean("is_urgent").notNull().default(false),
     status: text("status").notNull().default("pending"),
     chosenAction: text("chosen_action"),
+    chosenSubAction: text("chosen_sub_action"),
     processedAt: timestamp("processed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
