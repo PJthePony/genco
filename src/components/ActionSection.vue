@@ -240,8 +240,8 @@ function handleSkip(cardId) {
   gap: 6px;
   padding: 8px 18px;
   border-radius: var(--radius-md);
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;
   font-family: inherit;
   border: none;
   background: var(--color-primary);
@@ -290,13 +290,9 @@ function handleSkip(cardId) {
   color: var(--color-text-muted);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .section-header {
     padding: 12px 14px;
-  }
-
-  .section-sublabel {
-    font-size: 0.65rem;
   }
 
   .section-header-right {
@@ -306,12 +302,14 @@ function handleSkip(cardId) {
 
   .btn-bulk {
     padding: 10px 18px;
+    min-height: 44px;
     width: 100%;
     justify-content: center;
   }
 
   .btn-collapse {
     padding: 10px 0;
+    min-height: 44px;
   }
 
   .section-body {

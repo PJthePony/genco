@@ -285,7 +285,7 @@ watch(() => props.items.length, (len) => {
   border-top: 1px solid var(--color-border);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .briefing-digest-header {
     padding: 12px 14px;
   }
@@ -306,7 +306,7 @@ watch(() => props.items.length, (len) => {
   .briefing-item-view,
   .briefing-item-action {
     padding: 10px 12px;
-    font-size: 0.68rem;
+    min-height: 44px;
   }
 
   .briefing-item-summary {
@@ -321,6 +321,7 @@ watch(() => props.items.length, (len) => {
 
   .briefing-footer-action {
     padding: 10px 12px;
+    min-height: 44px;
   }
 
   .briefing-digest-empty {

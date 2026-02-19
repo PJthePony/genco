@@ -406,7 +406,7 @@ function skipFeedback() {
 .btn {
   padding: 8px 18px;
   border-radius: var(--radius-md);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
@@ -435,7 +435,7 @@ function skipFeedback() {
   background: transparent;
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
-  padding: 8px 14px;
+  padding: 8px 18px;
 }
 
 .btn-change:hover { background: var(--color-bg); }
@@ -461,9 +461,9 @@ function skipFeedback() {
 .alt-actions.visible { display: flex; }
 
 .btn-alt {
-  padding: 9px 14px;
+  padding: 9px 18px;
   border-radius: var(--radius-md);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
@@ -704,7 +704,7 @@ function skipFeedback() {
 
 .btn-cancel-review:hover { color: var(--color-text-secondary); }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .card {
     padding: 14px;
   }
@@ -743,8 +743,8 @@ function skipFeedback() {
   }
 
   .btn {
-    padding: 10px 14px;
-    font-size: 0.75rem;
+    padding: 10px 18px;
+    min-height: 44px;
   }
 
   .btn-approve {
@@ -770,8 +770,8 @@ function skipFeedback() {
   }
 
   .btn-alt {
-    padding: 10px 12px;
-    font-size: 0.72rem;
+    padding: 10px 14px;
+    min-height: 44px;
     flex: 1 1 auto;
   }
 
@@ -806,7 +806,7 @@ function skipFeedback() {
   }
 }
 
-@media (min-width: 641px) {
+@media (min-width: 769px) {
   .card { padding: 20px; }
   .btn-approve { flex: none; }
 }

@@ -186,7 +186,7 @@ function truncate(text, max) {
   background: var(--color-success-soft);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .compact-row {
     gap: 8px;
     padding: 10px 0;
@@ -219,8 +219,8 @@ function truncate(text, max) {
   }
 
   .compact-approve {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 }
 </style>

@@ -601,21 +601,21 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 18px;
+  padding: 8px 18px;
   border-radius: var(--radius-md);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   font-weight: 500;
   font-family: inherit;
   border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  background: transparent;
+  color: var(--color-primary);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .btn-scan:hover:not(:disabled) {
-  border-color: var(--color-accent-border);
-  color: var(--color-accent);
+  background: var(--color-primary-ghost);
+  border-color: var(--color-primary);
 }
 
 .btn-scan:disabled {
@@ -657,14 +657,16 @@ onUnmounted(() => {
 
 .btn-retry {
   margin-top: 12px;
-  padding: 8px 16px;
+  padding: 8px 18px;
   border-radius: var(--radius-md);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
+  font-weight: 500;
   font-family: inherit;
   border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  background: transparent;
+  color: var(--color-primary);
   cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
 
@@ -711,7 +713,7 @@ onUnmounted(() => {
   transition: transform 0.1s ease-out;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .app-body {
     padding: 1rem 1rem 80px;
   }
@@ -725,17 +727,12 @@ onUnmounted(() => {
     margin-top: 10px;
   }
 
-  .briefing-stat {
-    font-size: 0.75rem;
-  }
-
   .btn-scan {
-    padding: 10px 16px;
-    font-size: 0.75rem;
+    min-height: 44px;
   }
 
   .btn-retry {
-    padding: 10px 16px;
+    min-height: 44px;
   }
 
   .action-buttons {
@@ -743,7 +740,7 @@ onUnmounted(() => {
   }
 }
 
-@media (min-width: 641px) {
+@media (min-width: 769px) {
   .app-body {
     padding: 2rem 2rem 4rem;
   }

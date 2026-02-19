@@ -235,7 +235,7 @@ function handleNoise(id) {
   margin-left: auto;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .section-header {
     padding: 12px 14px;
   }
