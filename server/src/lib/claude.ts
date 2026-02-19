@@ -19,16 +19,15 @@ const CLASSIFY_EMAIL_TOOL: Anthropic.Tool = {
       },
       recommended_action: {
         type: "string",
-        enum: [
-          "reply",
-          "add_task",
-          "archive",
-          "unsubscribe",
-          "briefing",
-          "act",
-        ],
+        enum: ["reply", "act", "archive"],
         description:
-          "The recommended action: 'reply' (needs a response), 'add_task' (creates a task in Tessio), 'archive' (no action needed), 'unsubscribe' (newsletter/marketing to unsubscribe from), 'briefing' (informational — route to daily digest), 'act' (take a direct action like RSVP, confirm, etc.)",
+          "The recommended action: 'reply' (needs a personal response from P.J.), 'act' (a direct action is needed — unsubscribe, create task, route to briefing, RSVP, etc.), 'archive' (no action needed — receipts, confirmations, FYI-only)",
+      },
+      recommended_sub_action: {
+        type: "string",
+        enum: ["unsubscribe", "add_task", "briefing"],
+        description:
+          "Required when recommended_action is 'act'. Specifies the sub-action: 'unsubscribe' (marketing/newsletter to unsubscribe from), 'add_task' (contains something P.J. needs to do), 'briefing' (informational content to route to daily digest). Omit when recommended_action is 'reply' or 'archive'.",
       },
       priority: {
         type: "string",
@@ -41,10 +40,10 @@ const CLASSIFY_EMAIL_TOOL: Anthropic.Tool = {
         description:
           "True ONLY if the email requires attention within the next few hours — e.g., meeting in 1 hour, server is down, time-sensitive deadline today. Most emails are NOT urgent.",
       },
-      reply_draft: {
+      reply_summary: {
         type: "string",
         description:
-          "A draft reply if recommended_action is 'reply'. Write as P.J. — casual, direct, friendly. Keep it short. Leave blank if not a reply.",
+          "A one-line summary of what the reply should say, if recommended_action is 'reply'. Describe the direction, e.g., 'Accept the meeting and confirm Thursday at 2pm' or 'Decline — P.J. is traveling that week'. This is NOT the full draft — just the direction. Leave blank if not a reply.",
       },
       task_title: {
         type: "string",
@@ -97,9 +96,10 @@ export interface PersonalContextItem {
 export interface ClassificationResult {
   summary: string;
   recommendedAction: string;
+  recommendedSubAction: string | null;
   priority: string;
   isUrgent: boolean;
-  replyDraft: string | null;
+  replySummary: string | null;
   taskTitle: string | null;
   updatedSenderSummary: string;
   personalContext?: PersonalContextItem[];
@@ -125,12 +125,12 @@ export async function classifyEmail(
     `P.J. is "The Don" — a busy founder/builder. He wants to spend zero time on email that doesn't need him.`,
     ``,
     `ACTIONS:`,
-    `- reply: The email needs a personal response from P.J.`,
-    `- add_task: The email contains something P.J. needs to do (but not reply to)`,
+    `- reply: The email needs a personal response from P.J. Provide a reply_summary describing the direction of the reply.`,
+    `- act: A direct action is needed. Always specify a recommended_sub_action:`,
+    `  - unsubscribe: Marketing, newsletters P.J. didn't ask for, promotional spam`,
+    `  - add_task: The email contains something P.J. needs to do (but not reply to). Provide a task_title.`,
+    `  - briefing: Informational content P.J. subscribed to — route to daily digest`,
     `- archive: No action needed — receipts, confirmations, FYI-only, automated notifications`,
-    `- unsubscribe: Marketing, newsletters P.J. didn't ask for, promotional spam`,
-    `- briefing: Informational content P.J. subscribed to — route to daily digest instead of inbox`,
-    `- act: A clear, simple action like RSVPing, confirming attendance, clicking a link`,
     ``,
     `PRIORITY:`,
     `- high: From someone important, has a deadline, or needs a decision`,
@@ -139,7 +139,7 @@ export async function classifyEmail(
     ``,
     `URGENCY: Almost nothing is urgent. Only flag as urgent if P.J. needs to act within hours.`,
     ``,
-    `REPLY DRAFTS: Write as P.J. — casual, direct, warm but not wordy. First-name basis. No "Dear" or "Best regards."`,
+    `REPLY SUMMARY: When recommending 'reply', write a one-line summary of what the reply should say — the direction, not the full text. E.g., "Accept the meeting, confirm Thursday at 2pm" or "Ask for more details about the budget".`,
     ``,
     `SENDER SUMMARY: You must update the sender relationship summary. This is P.J.'s memory of this sender. If there's an existing summary, update it with new context from this email. If there's no existing summary, create one from scratch. Include: who they are, their role/company, what the conversation is about, and how P.J. should handle their emails. Keep it to 2-4 sentences.`,
   ];
@@ -235,12 +235,22 @@ export async function classifyEmail(
             }))
           : undefined;
 
+      // Normalize: map old action values to new 3-action model
+      let action = (input.recommended_action as string) ?? "archive";
+      let subAction = (input.recommended_sub_action as string) || null;
+
+      // Backward compat: if the model returns old top-level values, remap
+      if (action === "unsubscribe") { action = "act"; subAction = "unsubscribe"; }
+      if (action === "add_task") { action = "act"; subAction = "add_task"; }
+      if (action === "briefing") { action = "act"; subAction = "briefing"; }
+
       return {
         summary: (input.summary as string) ?? "",
-        recommendedAction: (input.recommended_action as string) ?? "archive",
+        recommendedAction: action,
+        recommendedSubAction: subAction,
         priority: (input.priority as string) ?? "medium",
         isUrgent: (input.is_urgent as boolean) ?? false,
-        replyDraft: (input.reply_draft as string) || null,
+        replySummary: (input.reply_summary as string) || null,
         taskTitle: (input.task_title as string) || null,
         updatedSenderSummary:
           (input.updated_sender_summary as string) ?? "",
@@ -646,6 +656,219 @@ export async function generateReplyDraft(opts: {
   }
 
   throw lastError ?? new Error("Failed to generate reply draft");
+}
+
+// ── Reply From Direction ──────────────────────────────────────────────
+
+/**
+ * Generate a full reply draft from a user-approved (or edited) direction.
+ * Called on-demand when the user approves or edits the reply summary.
+ */
+export async function generateReplyFromDirection(opts: {
+  fromName: string;
+  fromEmail: string;
+  subject: string;
+  bodyText: string;
+  direction: string;
+  senderSummary?: string | null;
+}): Promise<string> {
+  const systemParts = [
+    `You are drafting an email reply for P.J. Tanzillo.`,
+    `Write as P.J. — casual, direct, warm but not wordy. First-name basis. No "Dear" or "Best regards."`,
+    `Keep it short and natural. Match P.J.'s tone: friendly, efficient, slightly informal.`,
+    ``,
+    `The user has described the direction of the reply. Follow it closely.`,
+  ];
+
+  if (opts.senderSummary) {
+    systemParts.push(``);
+    systemParts.push(`RELATIONSHIP WITH ${opts.fromEmail}:`);
+    systemParts.push(opts.senderSummary);
+  }
+
+  const system = systemParts.join("\n");
+  const bodySnippet = opts.bodyText.slice(0, 2000);
+
+  const userMessage = [
+    `ORIGINAL EMAIL:`,
+    `From: ${opts.fromName} <${opts.fromEmail}>`,
+    `Subject: ${opts.subject}`,
+    ``,
+    bodySnippet,
+    ``,
+    `REPLY DIRECTION:`,
+    opts.direction,
+    ``,
+    `Write the reply now. Just the reply body — no subject line, no greeting header, no signature block.`,
+  ].join("\n");
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 1024,
+        system,
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text",
+      );
+
+      return textBlock?.text ?? "Thanks for the email!";
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) throw err;
+    }
+  }
+
+  throw lastError ?? new Error("Failed to generate reply from direction");
+}
+
+// ── Re-classify for Action (Promote Flow) ────────────────────────────
+
+/**
+ * Re-classify an email constrained to 'reply' or 'act' only.
+ * Used when promoting a briefing item to the action queue.
+ */
+const RECLASSIFY_TOOL: Anthropic.Tool = {
+  name: "reclassify_email",
+  description:
+    "Re-classify an email for the action queue. Only 'reply' or 'act' are valid — this email needs action.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      summary: {
+        type: "string",
+        description: "A concise 1-2 sentence summary. Focus on what matters.",
+      },
+      recommended_action: {
+        type: "string",
+        enum: ["reply", "act"],
+        description:
+          "'reply' if P.J. needs to respond personally, 'act' if a direct action is needed (unsubscribe, create task, etc.)",
+      },
+      recommended_sub_action: {
+        type: "string",
+        enum: ["unsubscribe", "add_task"],
+        description:
+          "Required when recommended_action is 'act'. 'unsubscribe' or 'add_task'. (briefing is not valid here — this item was just promoted FROM briefing.)",
+      },
+      priority: {
+        type: "string",
+        enum: ["high", "medium", "low"],
+      },
+      is_urgent: {
+        type: "boolean",
+        description: "True only if P.J. needs to act within hours.",
+      },
+      reply_summary: {
+        type: "string",
+        description:
+          "One-line direction for the reply if recommended_action is 'reply'. Leave blank otherwise.",
+      },
+      task_title: {
+        type: "string",
+        description:
+          "Task title if sub-action is 'add_task'. Leave blank otherwise.",
+      },
+    },
+    required: ["summary", "recommended_action", "priority", "is_urgent"],
+  },
+};
+
+export interface ReclassifyResult {
+  summary: string;
+  recommendedAction: string;
+  recommendedSubAction: string | null;
+  priority: string;
+  isUrgent: boolean;
+  replySummary: string | null;
+  taskTitle: string | null;
+}
+
+export async function reclassifyForAction(opts: {
+  fromName: string;
+  fromEmail: string;
+  subject: string;
+  bodyText: string;
+  senderSummary?: string | null;
+  feedbackContext?: string;
+}): Promise<ReclassifyResult> {
+  const systemParts = [
+    `You are Genco, P.J.'s email triage assistant. This email was originally routed to the daily briefing but P.J. wants to take action on it.`,
+    ``,
+    `Re-classify it for the action queue. Only 'reply' or 'act' are valid — 'archive' and 'briefing' are not options since P.J. explicitly wants to act.`,
+    ``,
+    `- reply: P.J. needs to respond personally. Provide a reply_summary with the direction.`,
+    `- act: A direct action is needed. Specify sub-action: 'unsubscribe' or 'add_task' (with task_title).`,
+  ];
+
+  if (opts.senderSummary) {
+    systemParts.push(``);
+    systemParts.push(`SENDER RELATIONSHIP:`);
+    systemParts.push(opts.senderSummary);
+  }
+
+  if (opts.feedbackContext) {
+    systemParts.push(``);
+    systemParts.push(`USER FEEDBACK (past corrections):`);
+    systemParts.push(opts.feedbackContext);
+  }
+
+  const system = systemParts.join("\n");
+  const body = opts.bodyText.slice(0, 3000);
+  const userMessage = `From: ${opts.fromName} <${opts.fromEmail}>\nSubject: ${opts.subject}\n\n${body}`;
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 512,
+        system,
+        tools: [RECLASSIFY_TOOL],
+        tool_choice: { type: "tool", name: "reclassify_email" },
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const toolUse = response.content.find(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+      );
+
+      if (!toolUse) {
+        throw new Error("Claude did not return a tool use response");
+      }
+
+      const input = toolUse.input as Record<string, unknown>;
+
+      return {
+        summary: (input.summary as string) ?? "",
+        recommendedAction: (input.recommended_action as string) ?? "act",
+        recommendedSubAction: (input.recommended_sub_action as string) || null,
+        priority: (input.priority as string) ?? "medium",
+        isUrgent: (input.is_urgent as boolean) ?? false,
+        replySummary: (input.reply_summary as string) || null,
+        taskTitle: (input.task_title as string) || null,
+      };
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) throw err;
+    }
+  }
+
+  throw lastError ?? new Error("Failed to reclassify email");
 }
 
 // ── Follow-Up Draft Generation ──────────────────────────────────────────

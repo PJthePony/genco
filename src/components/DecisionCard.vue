@@ -10,120 +10,114 @@ const emit = defineEmits(['approve', 'skip', 'open-email', 'feedback'])
 const showingAlts = ref(false)
 const pendingAlt = ref(null)
 const feedbackText = ref('')
-const replyContext = ref('')
 const feedbackInput = ref(null)
-const replyContextInput = ref(null)
 
-// Reply review state — lets user see/edit draft before sending
+// ── Reply two-step state ──
+// Step 1: show replySummary → approve or edit
+// Step 2 (on approve): parent generates full draft via API, then executes
 const reviewingReply = ref(false)
-const reviewDraft = ref('')
+const replySummaryText = ref('')
 const reviewTextarea = ref(null)
+
+// ── Act two-step state ──
+const pickingSubAction = ref(false)
+
+const SUB_ACTIONS = [
+  { key: 'unsubscribe', label: 'Unsubscribe', icon: 'bolt' },
+  { key: 'add_task', label: '+ Task', icon: 'task' },
+  { key: 'briefing', label: '+ Briefing', icon: 'book' },
+]
 
 const isReplyAction = computed(() =>
   pendingAlt.value?.action === 'Reply'
 )
 
-// True when the default action is Reply on an iMessage card
-const isMessageReply = computed(() =>
-  props.card.type === 'message' && props.card.actionKey === 'reply'
-)
-
 function showAlts() { showingAlts.value = true }
 function hideAlts() { showingAlts.value = false; pendingAlt.value = null }
 
-function approve(msg) {
-  // Intercept: if this is a message reply, show the review step first
-  if (isMessageReply.value && !reviewingReply.value) {
-    reviewDraft.value = props.card.replyDraft || ''
+function approve() {
+  const card = props.card
+
+  // Reply cards → show summary review step
+  if (card.actionKey === 'reply' && !reviewingReply.value) {
+    replySummaryText.value = card.replySummary || ''
     reviewingReply.value = true
     nextTick(() => reviewTextarea.value?.focus())
     return
   }
-  emit('approve', props.card.id, msg)
+
+  // Act cards → show sub-action picker
+  if (card.actionKey === 'act' && !pickingSubAction.value) {
+    pickingSubAction.value = true
+    return
+  }
+
+  // Archive / already confirmed → execute
+  emit('approve', card.id, card.actionMsg)
 }
 
 function confirmReply() {
-  // Update the card's replyDraft with the (possibly edited) text
-  props.card.replyDraft = reviewDraft.value.trim()
+  // Emit with the direction text — parent will call generateDraft() then executeAction()
+  const direction = replySummaryText.value.trim()
   reviewingReply.value = false
-  emit('approve', props.card.id, 'Reply sent')
+  emit('approve', props.card.id, 'Reply draft created', { replyDirection: direction })
 }
 
 function cancelReview() {
   reviewingReply.value = false
-  reviewDraft.value = ''
+  replySummaryText.value = ''
+}
+
+function pickSubAction(subKey) {
+  pickingSubAction.value = false
+  emit('approve', props.card.id, null, { subAction: subKey })
+}
+
+function cancelSubActionPick() {
+  pickingSubAction.value = false
 }
 
 function selectAlt(action, msg) {
   pendingAlt.value = { action, msg }
   feedbackText.value = ''
-  replyContext.value = ''
-  nextTick(() => {
-    if (action === 'Reply') {
-      replyContextInput.value?.focus()
-    } else {
-      feedbackInput.value?.focus()
-    }
-  })
+  nextTick(() => feedbackInput.value?.focus())
 }
 
 function submitFeedback() {
   const feedback = feedbackText.value.trim()
-  const replyInstructions = replyContext.value.trim()
   emit('feedback', {
     cardId: props.card.id,
     sender: props.card.sender,
     originalAction: props.card.action,
     chosenAction: pendingAlt.value.action,
     reason: feedback || null,
-    replyContext: replyInstructions || null,
     timestamp: new Date().toISOString(),
   })
-  // If switching to Reply on a message card, show review step
-  if (pendingAlt.value.action === 'Reply' && props.card.type === 'message') {
-    props.card.actionKey = 'reply'
-    pendingAlt.value = null
-    feedbackText.value = ''
-    replyContext.value = ''
-    // The draft will be generated server-side via replyContext;
-    // for now show what we have or a placeholder
-    reviewDraft.value = props.card.replyDraft || ''
-    reviewingReply.value = true
-    nextTick(() => reviewTextarea.value?.focus())
-    return
-  }
-  approve(pendingAlt.value.msg)
+  // Update card's actionKey to reflect the override, then approve
+  const ACTION_KEY_MAP = { 'Reply': 'reply', 'Act': 'act', 'Archive': 'archive' }
+  const newKey = ACTION_KEY_MAP[pendingAlt.value.action]
+  if (newKey) props.card.actionKey = newKey
   pendingAlt.value = null
   feedbackText.value = ''
-  replyContext.value = ''
+  // Trigger the two-step flow for the new action
+  approve()
 }
 
 function skipFeedback() {
-  const replyInstructions = replyContext.value.trim()
   emit('feedback', {
     cardId: props.card.id,
     sender: props.card.sender,
     originalAction: props.card.action,
     chosenAction: pendingAlt.value.action,
     reason: null,
-    replyContext: replyInstructions || null,
     timestamp: new Date().toISOString(),
   })
-  // If switching to Reply on a message card, show review step
-  if (pendingAlt.value.action === 'Reply' && props.card.type === 'message') {
-    props.card.actionKey = 'reply'
-    pendingAlt.value = null
-    feedbackText.value = ''
-    replyContext.value = ''
-    reviewDraft.value = props.card.replyDraft || ''
-    reviewingReply.value = true
-    nextTick(() => reviewTextarea.value?.focus())
-    return
-  }
-  approve(pendingAlt.value.msg)
+  const ACTION_KEY_MAP = { 'Reply': 'reply', 'Act': 'act', 'Archive': 'archive' }
+  const newKey = ACTION_KEY_MAP[pendingAlt.value.action]
+  if (newKey) props.card.actionKey = newKey
   pendingAlt.value = null
   feedbackText.value = ''
-  replyContext.value = ''
+  approve()
 }
 </script>
 
@@ -148,59 +142,74 @@ function skipFeedback() {
     <div v-if="card.type === 'message' && card.messageText" class="card-message-text">{{ card.messageText }}</div>
     <div class="card-summary">{{ card.summary }}</div>
 
-    <!-- Reply review step — shows draft before sending -->
+    <!-- Reply review step — shows AI's one-line summary for approval/editing -->
     <div v-if="reviewingReply" class="reply-review">
-      <div class="review-label">Review reply to {{ card.sender }}</div>
+      <div class="review-label">Reply direction</div>
       <textarea
         ref="reviewTextarea"
-        v-model="reviewDraft"
+        v-model="replySummaryText"
         class="review-textarea"
-        rows="3"
-        placeholder="Type your reply…"
+        rows="2"
+        placeholder="What should the reply say?"
       />
+      <div class="review-hint">Approve to generate a full draft, or edit the direction first.</div>
       <div class="review-actions">
-        <button class="btn btn-send-reply" :disabled="!reviewDraft.trim()" @click="confirmReply">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Send
+        <button class="btn btn-send-reply" :disabled="!replySummaryText.trim()" @click="confirmReply">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Generate Draft
         </button>
         <button class="btn btn-cancel-review" @click="cancelReview">Back</button>
       </div>
     </div>
 
-    <template v-if="!reviewingReply">
+    <!-- Act sub-action picker -->
+    <div v-else-if="pickingSubAction" class="sub-action-picker">
+      <div class="review-label">What action?</div>
+      <div class="sub-action-options">
+        <button
+          v-for="sa in SUB_ACTIONS"
+          :key="sa.key"
+          class="btn-sub-action"
+          :class="{ suggested: sa.key === card.subActionKey }"
+          @click="pickSubAction(sa.key)"
+        >
+          <svg v-if="sa.icon === 'bolt'" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <svg v-if="sa.icon === 'task'" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          <svg v-if="sa.icon === 'book'" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          {{ sa.label }}
+          <span v-if="sa.key === card.subActionKey" class="suggested-tag">suggested</span>
+        </button>
+      </div>
+      <button class="btn-back" @click="cancelSubActionPick">Back</button>
+    </div>
+
+    <template v-else>
     <div class="rec-label">Genco recommends</div>
 
     <!-- Default actions -->
     <div class="default-actions card-actions" :class="{ hidden: showingAlts }">
-      <button class="btn btn-approve" @click="approve(card.actionMsg)">
+      <button class="btn btn-approve" @click="approve()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         {{ card.action }}
+        <span v-if="card.subAction" class="approve-sub">· {{ card.subAction }}</span>
       </button>
       <button class="btn btn-change" @click="showAlts">Change</button>
       <button class="btn btn-skip" @click="$emit('skip', card.id)">Skip</button>
     </div>
 
-    <!-- Alt actions -->
+    <!-- Alt actions — only Reply, Act, Archive -->
     <div class="alt-actions" :class="{ visible: showingAlts && !pendingAlt }">
-      <button v-if="card.hasBriefing && card.type !== 'message'" class="btn-alt" @click="selectAlt('+ Briefing', card.sender + ' added to Daily Briefing')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-        + Briefing
-      </button>
-      <button v-if="card.action !== 'Reply'" class="btn-alt" @click="selectAlt('Reply', 'Reply draft created')">
+      <button v-if="card.actionKey !== 'reply'" class="btn-alt" @click="selectAlt('Reply', 'Reply draft created')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
         Reply
       </button>
-      <button v-if="card.action !== '+ Task'" class="btn-alt" @click="selectAlt('+ Task', 'Task added to Tessio')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-        + Task
-      </button>
-      <button v-if="card.action !== 'Archive'" class="btn-alt" @click="selectAlt('Archive', 'Archived')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/></svg>
-        Archive
-      </button>
-      <button v-if="card.action !== 'Unsubscribe' && card.type !== 'message'" class="btn-alt" @click="selectAlt('Unsubscribe', 'Unsubscribed')">
+      <button v-if="card.actionKey !== 'act' && card.type !== 'message'" class="btn-alt" @click="selectAlt('Act', 'Done')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         Act
+      </button>
+      <button v-if="card.actionKey !== 'archive'" class="btn-alt" @click="selectAlt('Archive', 'Archived')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/></svg>
+        Archive
       </button>
       <button class="btn-back" @click="hideAlts">Back</button>
     </div>
@@ -213,33 +222,18 @@ function skipFeedback() {
         <span class="feedback-to">{{ pendingAlt?.action }}</span>
       </div>
 
-      <!-- Reply context input — only shown when changing to Reply -->
-      <template v-if="isReplyAction">
-        <div class="feedback-question">What should the reply say?</div>
-        <textarea
-          ref="replyContextInput"
-          v-model="replyContext"
-          class="feedback-input reply-context-input"
-          placeholder="e.g. Tell them I'm free Thursday afternoon, ask about the budget"
-          maxlength="500"
-          rows="2"
-        />
-      </template>
-
-      <div class="feedback-question">{{ isReplyAction ? 'Any feedback for Genco?' : "Why'd you change it?" }}</div>
+      <div class="feedback-question">Why'd you change it?</div>
       <form class="feedback-form" @submit.prevent="submitFeedback">
         <input
           ref="feedbackInput"
           v-model="feedbackText"
           type="text"
           class="feedback-input"
-          :placeholder="isReplyAction ? 'e.g. I always reply to this person' : 'e.g. I always reply to this person'"
+          placeholder="e.g. I always reply to this person"
           maxlength="200"
         />
         <div class="feedback-actions">
-          <button type="submit" class="btn-feedback-send" :disabled="isReplyAction ? !replyContext.trim() : !feedbackText.trim()">
-            {{ isReplyAction ? 'Generate Reply' : 'Send' }}
-          </button>
+          <button type="submit" class="btn-feedback-send" :disabled="!feedbackText.trim()">Send</button>
           <button type="button" class="btn-feedback-skip" @click="skipFeedback">Skip</button>
         </div>
       </form>
@@ -575,15 +569,6 @@ function skipFeedback() {
   border-color: var(--color-accent-border);
 }
 
-.reply-context-input {
-  resize: vertical;
-  min-height: 50px;
-  max-height: 120px;
-  margin-bottom: 8px;
-  line-height: 1.45;
-  box-sizing: border-box;
-}
-
 .feedback-actions {
   display: flex;
   align-items: center;
@@ -631,6 +616,72 @@ function skipFeedback() {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 8px;
+}
+
+.review-hint {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+}
+
+/* ── Sub-Action Picker ── */
+.sub-action-picker {
+  animation: fadeIn 0.15s ease;
+}
+
+.sub-action-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.btn-sub-action {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-sub-action.suggested {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.btn-sub-action:hover,
+.btn-sub-action:active {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.btn-sub-action svg { opacity: 0.5; flex-shrink: 0; }
+.btn-sub-action.suggested svg,
+.btn-sub-action:hover svg,
+.btn-sub-action:active svg { opacity: 1; }
+
+.suggested-tag {
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+}
+
+.approve-sub {
+  font-weight: 400;
+  opacity: 0.8;
 }
 
 .review-textarea {
@@ -803,6 +854,12 @@ function skipFeedback() {
 
   .btn-cancel-review {
     padding: 10px 12px;
+  }
+
+  .btn-sub-action {
+    padding: 10px 14px;
+    min-height: 44px;
+    flex: 1 1 auto;
   }
 }
 

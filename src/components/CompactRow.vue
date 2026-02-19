@@ -26,7 +26,7 @@ function truncate(text, max) {
       <div class="compact-summary">{{ truncate(card.summary, 80) }}</div>
     </div>
     <div class="compact-right">
-      <span class="compact-tag" :class="'tag-' + card.actionKey">{{ card.action }}</span>
+      <span class="compact-tag" :class="'tag-' + card.actionKey">{{ card.subAction || card.action }}</span>
       <button class="compact-approve" @click.stop="$emit('quick-approve')" aria-label="Approve">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </button>

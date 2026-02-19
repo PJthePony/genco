@@ -18,8 +18,8 @@ import ToastNotification from '../components/ToastNotification.vue'
 
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
-const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction } = useGroupedQueue()
-const { items: digestItems, fetchDigest } = useDigest()
+const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, generateDraft: generateReplyDraft } = useGroupedQueue()
+const { items: digestItems, fetchDigest, promoteItem } = useDigest()
 const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
 const { markSeen, startPolling, stopPolling } = useUnread()
 
@@ -198,29 +198,62 @@ function closeEmail() {
 }
 
 // ── Decision Card Actions ──
-async function approveCard(cardId, message) {
+async function approveCard(cardId, message, extra = {}) {
   const card = cards.value.find(c => c.id === cardId)
   if (!card) return
 
   try {
+    // Reply flow: generate full draft from direction, then execute
+    if (card.actionKey === 'reply' && extra.replyDirection !== undefined) {
+      showToast('Generating draft…')
+      const draftResult = await generateReplyDraft(cardId, extra.replyDirection)
+      const result = await executeAction(cardId, 'reply', {
+        replyBody: draftResult.draft,
+      })
+      card.cleared = true
+      showToast('Reply draft created')
+      return
+    }
+
+    // Act flow: subAction comes from the picker
+    if (card.actionKey === 'act' && extra.subAction) {
+      const result = await executeAction(cardId, 'act', {
+        subAction: extra.subAction,
+        taskTitle: card.taskTitle,
+      })
+      card.cleared = true
+
+      // Handle unsubscribe result
+      if (result.unsubscribeMethod === 'one-click') {
+        showToast('Unsubscribed (one-click)')
+      } else if (result.unsubscribeMethod === 'mailto') {
+        showToast('Unsubscribe email sent')
+      } else if (result.unsubscribeMethod === 'url' && result.unsubscribeUrl) {
+        showToast('Archived — open link to finish unsubscribing')
+        window.open(result.unsubscribeUrl, '_blank', 'noopener')
+      } else {
+        const SUB_MSGS = { unsubscribe: 'Unsubscribed & archived', add_task: 'Task added to Tessio', briefing: 'Added to Daily Briefing' }
+        showToast(SUB_MSGS[extra.subAction] || 'Done')
+      }
+      return
+    }
+
+    // Archive / other — direct execute
     const result = await executeAction(cardId, card.actionKey, {
-      replyBody: card.replyDraft,
-      replyContext: card.replyContext || undefined,
       taskTitle: card.taskTitle,
     })
     card.cleared = true
 
-    // Handle unsubscribe result — show appropriate message
+    // Handle unsubscribe result (backward compat for old cards)
     if (result.unsubscribeMethod === 'one-click') {
       showToast('Unsubscribed (one-click)')
     } else if (result.unsubscribeMethod === 'mailto') {
       showToast('Unsubscribe email sent')
     } else if (result.unsubscribeMethod === 'url' && result.unsubscribeUrl) {
       showToast('Archived — open link to finish unsubscribing')
-      // Open the unsub URL in a new tab for the user
       window.open(result.unsubscribeUrl, '_blank', 'noopener')
     } else {
-      showToast(message)
+      showToast(message || card.actionMsg)
     }
   } catch (err) {
     showToast(err.message || 'Action failed — try again')
@@ -239,30 +272,8 @@ async function skipCard(cardId) {
 }
 
 async function handleFeedback(entry) {
-  // Map the chosen display label back to the backend action key
-  // and update the card BEFORE the async call so approveCard
-  // (which fires synchronously after this) reads the new key
-  const ACTION_KEY_MAP = {
-    'Reply': 'reply',
-    '+ Task': 'add_task',
-    'Archive': 'archive',
-    'Unsubscribe': 'unsubscribe',
-    '+ Briefing': 'briefing',
-    'Act': 'act',
-  }
-
-  const card = cards.value.find(c => c.id === entry.cardId)
-  if (card) {
-    const newKey = ACTION_KEY_MAP[entry.chosenAction]
-    if (newKey) {
-      card.actionKey = newKey
-    }
-    if (entry.replyContext) {
-      card.replyContext = entry.replyContext
-    }
-  }
-
-  // Also update local state
+  // Card's actionKey is already updated by DecisionCard before emitting feedback.
+  // Just record the feedback.
   addFeedback(entry)
 
   // Save feedback to backend (fire-and-forget, doesn't block approve)
@@ -309,14 +320,13 @@ async function handleBulkApprove(sectionKey) {
   const section = sections.value.find(s => s.key === sectionKey)
   if (!section || section.count === 0) return
 
-  // Skip iMessage replies in bulk approve — those need individual review
-  const cardsToApprove = [...section.cards].filter(c =>
-    !(c.type === 'message' && c.actionKey === 'reply')
-  )
+  // Reply cards need individual review — skip them in bulk
+  // Act cards with a sub-action can be bulk-approved
+  const cardsToApprove = [...section.cards].filter(c => c.actionKey !== 'reply')
   const skippedReplies = section.cards.length - cardsToApprove.length
 
   if (cardsToApprove.length === 0) {
-    showToast(`${skippedReplies} message replies need individual review`)
+    showToast(`${skippedReplies} replies need individual review`)
     return
   }
 
@@ -328,11 +338,16 @@ async function handleBulkApprove(sectionKey) {
 
   const promises = cardsToApprove.map(async (card) => {
     try {
-      await executeAction(card.id, card.actionKey, {
-        replyBody: card.replyDraft,
-        replyContext: card.replyContext || undefined,
-        taskTitle: card.taskTitle,
-      })
+      if (card.actionKey === 'act' && card.subActionKey) {
+        await executeAction(card.id, 'act', {
+          subAction: card.subActionKey,
+          taskTitle: card.taskTitle,
+        })
+      } else {
+        await executeAction(card.id, card.actionKey, {
+          taskTitle: card.taskTitle,
+        })
+      }
       card.cleared = true
     } catch (err) {
       console.error(`Bulk action failed for ${card.id}:`, err)
@@ -358,9 +373,8 @@ async function handleBulkApprove(sectionKey) {
 // ── Promote digest item to decision queue ──
 async function promoteDigestItem(itemId) {
   try {
-    await api(`/queue/${itemId}/promote`, { method: 'POST' })
-    // Remove from digest, refresh queue to show the new card
-    digestItems.value = digestItems.value.filter(d => d.id !== itemId)
+    await promoteItem(itemId)
+    // Re-fetch queue to pick up the re-classified card
     await fetchQueue()
     showToast('Moved to action queue')
   } catch (err) {

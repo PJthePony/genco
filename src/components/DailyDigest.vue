@@ -1,14 +1,15 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { timeAgo } from '../lib/formatters.js'
 
 const props = defineProps({
   items: Array,
 })
 
-defineEmits(['manage-sources', 'promote', 'open-email'])
+const emit = defineEmits(['manage-sources', 'promote', 'open-email'])
 
 const expanded = ref(false)
+const promotingIds = reactive(new Set())
 
 function toggle() { expanded.value = !expanded.value }
 
@@ -16,6 +17,11 @@ function toggle() { expanded.value = !expanded.value }
 watch(() => props.items.length, (len) => {
   if (len === 0) expanded.value = false
 })
+
+function handlePromote(itemId) {
+  promotingIds.add(itemId)
+  emit('promote', itemId)
+}
 </script>
 
 <template>
@@ -50,8 +56,16 @@ watch(() => props.items.length, (len) => {
               </div>
               <div class="briefing-item-summary">{{ item.summary }}</div>
             </div>
-            <button class="briefing-item-promote" @click.stop="$emit('promote', item.id)" title="Move to action queue" aria-label="Move to action queue">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+            <button
+              class="briefing-item-promote"
+              :class="{ promoting: promotingIds.has(item.id) }"
+              :disabled="promotingIds.has(item.id)"
+              @click.stop="handlePromote(item.id)"
+              title="Move to action queue"
+              aria-label="Move to action queue"
+            >
+              <span v-if="promotingIds.has(item.id)" class="promote-spinner"></span>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
             </button>
           </div>
         </div>
@@ -236,11 +250,34 @@ watch(() => props.items.length, (len) => {
   flex-shrink: 0;
 }
 
-.briefing-item-promote:hover,
-.briefing-item-promote:active {
+.briefing-item-promote:hover:not(:disabled),
+.briefing-item-promote:active:not(:disabled) {
   color: var(--color-accent);
   border-color: var(--color-accent-border);
   background: var(--color-accent-soft);
+}
+
+.briefing-item-promote:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.briefing-item-promote.promoting {
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+}
+
+.promote-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-accent-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .briefing-digest-footer {

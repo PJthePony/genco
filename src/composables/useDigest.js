@@ -52,9 +52,22 @@ export function useDigest() {
     }
   }
 
+  /**
+   * Promote a briefing item to the action queue.
+   * Server re-classifies with AI (constrained to reply or act),
+   * then returns the new classification for immediate use.
+   */
+  async function promoteItem(itemId) {
+    const data = await api(`/queue/${itemId}/promote`, { method: 'POST' })
+    // Remove from digest list
+    items.value = items.value.filter(i => i.id !== itemId)
+    return data
+  }
+
   return {
     items,
     loading,
     fetchDigest,
+    promoteItem,
   }
 }

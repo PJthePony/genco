@@ -39,17 +39,23 @@ const bulkLabel = computed(() => {
   return `Approve all ${n}`
 })
 
-function handleApprove(cardId, msg) {
+function handleApprove(cardId, msg, extra) {
   expandedCardId.value = null
-  emit('approve', cardId, msg)
+  emit('approve', cardId, msg, extra)
 }
 
 function handleQuickApprove(card) {
-  // iMessage replies need review — expand instead of quick-approving
-  if (card.type === 'message' && card.actionKey === 'reply') {
+  // Reply cards always need the two-step flow — expand
+  if (card.actionKey === 'reply') {
     expandedCardId.value = card.id
     return
   }
+  // Act cards with a sub-action can quick-approve directly
+  if (card.actionKey === 'act' && card.subActionKey) {
+    emit('approve', card.id, card.subActionMsg, { subAction: card.subActionKey })
+    return
+  }
+  // Archive — direct approve
   emit('approve', card.id, card.actionMsg)
 }
 

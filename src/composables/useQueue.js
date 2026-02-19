@@ -8,32 +8,57 @@ const loading = ref(false)
 const scanning = ref(false)
 const error = ref(null)
 
-// ── Action label mapping ──
+// ── Action label mapping (3 top-level actions) ──
 const ACTION_LABELS = {
   reply: 'Reply',
-  add_task: '+ Task',
-  archive: 'Archive',
-  unsubscribe: 'Unsubscribe',
-  briefing: '+ Briefing',
   act: 'Act',
+  archive: 'Archive',
   skip: 'Skip',
 }
 
 const ACTION_MESSAGES = {
   reply: 'Reply draft created',
-  add_task: 'Task added to Tessio',
-  archive: 'Archived',
-  unsubscribe: 'Unsubscribed & archived',
-  briefing: 'Added to Daily Briefing',
   act: 'Done',
+  archive: 'Archived',
   skip: 'Skipped',
+}
+
+const SUB_ACTION_LABELS = {
+  unsubscribe: 'Unsubscribe',
+  add_task: '+ Task',
+  briefing: '+ Briefing',
+}
+
+const SUB_ACTION_MESSAGES = {
+  unsubscribe: 'Unsubscribed & archived',
+  add_task: 'Task added to Tessio',
+  briefing: 'Added to Daily Briefing',
 }
 
 /**
  * Map an API email queue item to the card format the DecisionCard component expects.
  */
+/**
+ * Normalize old action values to the 3-action model.
+ * Old emails may have top-level "unsubscribe", "add_task", or "briefing".
+ */
+function normalizeAction(rawAction, rawSubAction) {
+  let action = rawAction || 'archive'
+  let subAction = rawSubAction || null
+
+  // Backward compat: old top-level actions → act + sub-action
+  if (action === 'unsubscribe') { action = 'act'; subAction = 'unsubscribe' }
+  if (action === 'add_task') { action = 'act'; subAction = 'add_task' }
+  if (action === 'briefing') { action = 'act'; subAction = 'briefing' }
+
+  return { action, subAction }
+}
+
 function toCard(item) {
-  const action = item.aiRecommendedAction || 'archive'
+  const { action, subAction } = normalizeAction(
+    item.aiRecommendedAction,
+    item.aiRecommendedSubAction,
+  )
   return {
     id: item.id,
     emailId: item.id,
@@ -49,10 +74,13 @@ function toCard(item) {
     action: ACTION_LABELS[action] || 'Archive',
     actionKey: action,
     actionMsg: ACTION_MESSAGES[action] || 'Done',
+    subActionKey: subAction,
+    subAction: subAction ? (SUB_ACTION_LABELS[subAction] || subAction) : null,
+    subActionMsg: subAction ? (SUB_ACTION_MESSAGES[subAction] || 'Done') : null,
     cleared: false,
-    hasBriefing: !['briefing'].includes(action),
+    hasBriefing: action !== 'act' || subAction !== 'briefing',
     isUrgent: item.isUrgent,
-    replyDraft: item.aiReplyDraft,
+    replySummary: item.aiReplyDraft, // one-line reply direction (repurposed column)
     taskTitle: item.aiTaskTitle,
     bodyHtml: item.bodyHtml,
     messageText: null,
@@ -67,7 +95,10 @@ function toCard(item) {
  * Map an API message queue item to the same card format.
  */
 function toMessageCard(item) {
-  const action = item.aiRecommendedAction || 'skip'
+  const { action, subAction } = normalizeAction(
+    item.aiRecommendedAction || 'skip',
+    item.aiRecommendedSubAction,
+  )
   return {
     id: item.id,
     emailId: null,
@@ -83,10 +114,13 @@ function toMessageCard(item) {
     action: ACTION_LABELS[action] || 'Skip',
     actionKey: action,
     actionMsg: ACTION_MESSAGES[action] || 'Done',
+    subActionKey: subAction,
+    subAction: subAction ? (SUB_ACTION_LABELS[subAction] || subAction) : null,
+    subActionMsg: subAction ? (SUB_ACTION_MESSAGES[subAction] || 'Done') : null,
     cleared: false,
     hasBriefing: false,
     isUrgent: item.isUrgent,
-    replyDraft: item.aiReplyDraft,
+    replySummary: item.aiReplyDraft,
     taskTitle: null,
     bodyHtml: null,
     messageText: item.messageText,
@@ -157,6 +191,23 @@ export function useQueue() {
     }
   }
 
+  /**
+   * Generate a full reply draft from a direction/summary string.
+   * Returns { draft } with the full reply body.
+   */
+  async function generateDraft(cardId, direction) {
+    try {
+      const data = await api(`/queue/${cardId}/draft`, {
+        method: 'POST',
+        body: JSON.stringify({ direction }),
+      })
+      return data
+    } catch (err) {
+      console.error('Draft generation failed:', err)
+      throw err
+    }
+  }
+
   const remaining = computed(() => items.value.filter(c => !c.cleared).length)
   const urgentCount = computed(() => items.value.filter(c => !c.cleared && c.isUrgent).length)
   const allCleared = computed(() => items.value.length > 0 && remaining.value === 0)
@@ -172,5 +223,6 @@ export function useQueue() {
     fetchQueue,
     scanInbox,
     executeAction,
+    generateDraft,
   }
 }

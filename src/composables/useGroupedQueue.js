@@ -6,14 +6,14 @@ const SECTIONS = [
     key: 'action',
     label: 'Action Items',
     sublabel: 'Replies & tasks',
-    actionKeys: ['reply', 'add_task'],
+    actionKeys: ['reply', 'act'],
     defaultExpanded: true,
   },
   {
     key: 'archive',
     label: 'Archive',
     sublabel: 'Low priority — confirm & clear',
-    actionKeys: ['archive', 'unsubscribe', 'act'],
+    actionKeys: ['archive'],
     defaultExpanded: false,
   },
 ]
@@ -22,7 +22,7 @@ export function useGroupedQueue() {
   const {
     items, loading, scanning, error,
     remaining, urgentCount, allCleared,
-    fetchQueue, scanInbox, executeAction,
+    fetchQueue, scanInbox, executeAction, generateDraft,
   } = useQueue()
 
   const sections = computed(() => {
@@ -57,5 +57,6 @@ export function useGroupedQueue() {
     fetchQueue,
     scanInbox,
     executeAction,
+    generateDraft,
   }
 }

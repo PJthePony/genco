@@ -6,22 +6,32 @@ import { emailQueue, gmailConnections } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
 import { archiveMessage, unarchiveMessage, refreshAccessToken, type GoogleTokens } from "../lib/gmail.js";
+import { generateReplyFromDirection, reclassifyForAction } from "../lib/claude.js";
+import { senderSummaries, feedbackLog } from "../db/schema.js";
 
 const VALID_ACTIONS = [
   "reply",
-  "add_task",
+  "act",
   "archive",
+  "skip",
+  // Backward compat: old clients may still send these
+  "add_task",
   "unsubscribe",
   "briefing",
-  "act",
-  "skip",
 ] as const;
+
+const VALID_SUB_ACTIONS = ["unsubscribe", "add_task", "briefing"] as const;
 
 const actionSchema = z.object({
   action: z.enum(VALID_ACTIONS),
+  subAction: z.enum(VALID_SUB_ACTIONS).nullish(),
   replyBody: z.string().max(10000).nullish(),
   replyContext: z.string().max(1000).nullish(),
   taskTitle: z.string().max(500).nullish(),
+});
+
+const draftSchema = z.object({
+  direction: z.string().min(1).max(2000),
 });
 
 export const queueRoutes = new Hono<{ Variables: { user: AuthUser } }>();
@@ -37,7 +47,6 @@ queueRoutes.get("/", async (c) => {
       eq(emailQueue.userId, user.sub),
       eq(emailQueue.status, "pending"),
       isNotNull(emailQueue.aiSummary),
-      ne(emailQueue.aiRecommendedAction, "briefing"),
     ),
     orderBy: [desc(emailQueue.isUrgent), desc(emailQueue.receivedAt)],
     columns: {
@@ -49,6 +58,7 @@ queueRoutes.get("/", async (c) => {
       receivedAt: true,
       aiSummary: true,
       aiRecommendedAction: true,
+      aiRecommendedSubAction: true,
       aiPriority: true,
       aiReplyDraft: true,
       aiTaskTitle: true,
@@ -89,7 +99,12 @@ queueRoutes.get("/digest", async (c) => {
   const items = await db.query.emailQueue.findMany({
     where: and(
       eq(emailQueue.userId, user.sub),
-      eq(emailQueue.aiRecommendedAction, "briefing"),
+      or(
+        // New model: act + briefing sub-action
+        and(eq(emailQueue.aiRecommendedAction, "act"), eq(emailQueue.aiRecommendedSubAction, "briefing")),
+        // Backward compat: old briefing items
+        eq(emailQueue.aiRecommendedAction, "briefing"),
+      ),
       gte(emailQueue.receivedAt, since),
     ),
     orderBy: [desc(emailQueue.receivedAt)],
@@ -320,6 +335,7 @@ queueRoutes.post("/:id/action", async (c) => {
     replyBody: body.replyBody ?? undefined,
     replyContext: body.replyContext ?? undefined,
     taskTitle: body.taskTitle ?? undefined,
+    subAction: body.subAction ?? undefined,
   });
 
   if (!result.ok) {
@@ -332,6 +348,7 @@ queueRoutes.post("/:id/action", async (c) => {
     .set({
       status: body.action === "skip" ? "skipped" : "processed",
       chosenAction: body.action,
+      chosenSubAction: body.subAction ?? null,
       processedAt: new Date(),
     })
     .where(and(eq(emailQueue.id, id), eq(emailQueue.userId, user.sub)));
@@ -344,7 +361,51 @@ queueRoutes.post("/:id/action", async (c) => {
   });
 });
 
-// POST /queue/:id/promote — move a briefing item into the decision queue
+// POST /queue/:id/draft — generate a full reply draft from a direction
+queueRoutes.post("/:id/draft", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return c.json({ error: "Invalid email ID" }, 400);
+  }
+
+  const rawBody = await c.req.json().catch(() => null);
+  const parsed = draftSchema.safeParse(rawBody);
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  const email = await db.query.emailQueue.findFirst({
+    where: and(eq(emailQueue.id, id), eq(emailQueue.userId, user.sub)),
+  });
+
+  if (!email) {
+    return c.json({ error: "Email not found" }, 404);
+  }
+
+  // Look up sender summary for context
+  const senderSummary = await db.query.senderSummaries.findFirst({
+    where: and(
+      eq(senderSummaries.userId, user.sub),
+      eq(senderSummaries.senderEmail, email.fromEmail),
+    ),
+  });
+
+  const draft = await generateReplyFromDirection({
+    fromName: email.fromName ?? "",
+    fromEmail: email.fromEmail,
+    subject: email.subject,
+    bodyText: email.bodyText ?? "",
+    direction: parsed.data.direction,
+    senderSummary: senderSummary?.summary ?? null,
+  });
+
+  return c.json({ draft });
+});
+
+// POST /queue/:id/promote — re-classify a briefing item for the action queue
 queueRoutes.post("/:id/promote", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
@@ -353,22 +414,76 @@ queueRoutes.post("/:id/promote", async (c) => {
     return c.json({ error: "Invalid email ID" }, 400);
   }
 
-  // Change the recommended action so it appears in the decision queue
-  const updated = await db
-    .update(emailQueue)
-    .set({ aiRecommendedAction: "archive" })
-    .where(
-      and(
-        eq(emailQueue.id, id),
-        eq(emailQueue.userId, user.sub),
-        eq(emailQueue.aiRecommendedAction, "briefing"),
-      ),
-    )
-    .returning({ gmailMessageId: emailQueue.gmailMessageId });
+  // Find the briefing item (support both old and new model)
+  const email = await db.query.emailQueue.findFirst({
+    where: and(
+      eq(emailQueue.id, id),
+      eq(emailQueue.userId, user.sub),
+    ),
+  });
 
-  if (updated.length === 0) {
-    return c.json({ error: "Item not found or already promoted" }, 404);
+  if (!email) {
+    return c.json({ error: "Email not found" }, 404);
   }
+
+  // Verify it's a briefing item
+  const isBriefing =
+    email.aiRecommendedAction === "briefing" ||
+    (email.aiRecommendedAction === "act" && email.aiRecommendedSubAction === "briefing");
+
+  if (!isBriefing) {
+    return c.json({ error: "Item is not a briefing item" }, 400);
+  }
+
+  // Re-classify with AI, constrained to reply or act
+  const senderSummary = await db.query.senderSummaries.findFirst({
+    where: and(
+      eq(senderSummaries.userId, user.sub),
+      eq(senderSummaries.senderEmail, email.fromEmail),
+    ),
+  });
+
+  // Build feedback context
+  const recentFeedback = await db.query.feedbackLog.findMany({
+    where: eq(feedbackLog.userId, user.sub),
+    orderBy: (fb, { desc: d }) => [d(fb.createdAt)],
+    limit: 10,
+  });
+  const feedbackContext = recentFeedback
+    .map((fb) => {
+      let line = `- Changed "${fb.originalAction}" → "${fb.chosenAction}"`;
+      if (fb.sender) line += ` for ${fb.sender}`;
+      if (fb.reason) line += ` (reason: "${fb.reason}")`;
+      return line;
+    })
+    .join("\n");
+
+  const classification = await reclassifyForAction({
+    fromName: email.fromName ?? "",
+    fromEmail: email.fromEmail,
+    subject: email.subject,
+    bodyText: email.bodyText ?? "",
+    senderSummary: senderSummary?.summary ?? null,
+    feedbackContext: feedbackContext || undefined,
+  });
+
+  // Update the email with new classification and set back to pending
+  await db
+    .update(emailQueue)
+    .set({
+      aiSummary: classification.summary,
+      aiRecommendedAction: classification.recommendedAction,
+      aiRecommendedSubAction: classification.recommendedSubAction,
+      aiPriority: classification.priority,
+      isUrgent: classification.isUrgent,
+      aiReplyDraft: classification.replySummary,
+      aiTaskTitle: classification.taskTitle,
+      status: "pending",
+      chosenAction: null,
+      chosenSubAction: null,
+      processedAt: null,
+    })
+    .where(eq(emailQueue.id, id));
 
   // Move the email back to the inbox in Gmail
   try {
@@ -385,12 +500,29 @@ queueRoutes.post("/:id/promote", async (c) => {
           .set({ googleTokens: tokens, updatedAt: new Date() })
           .where(eq(gmailConnections.id, connection.id));
       }
-      await unarchiveMessage(tokens, updated[0].gmailMessageId);
+      await unarchiveMessage(tokens, email.gmailMessageId);
     }
   } catch (err) {
     console.warn("Failed to move email back to inbox:", err);
-    // Non-fatal: the item is still promoted in the queue
   }
 
-  return c.json({ ok: true });
+  // Return the new classification so frontend can add the card immediately
+  return c.json({
+    ok: true,
+    item: {
+      id: email.id,
+      fromEmail: email.fromEmail,
+      fromName: email.fromName,
+      subject: email.subject,
+      bodyHtml: email.bodyHtml,
+      receivedAt: email.receivedAt,
+      aiSummary: classification.summary,
+      aiRecommendedAction: classification.recommendedAction,
+      aiRecommendedSubAction: classification.recommendedSubAction,
+      aiPriority: classification.priority,
+      aiReplyDraft: classification.replySummary,
+      aiTaskTitle: classification.taskTitle,
+      isUrgent: classification.isUrgent,
+    },
+  });
 });

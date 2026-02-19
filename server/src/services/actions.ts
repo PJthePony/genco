@@ -61,7 +61,7 @@ export async function executeAction(
   userId: string,
   emailId: string,
   action: string,
-  payload?: { replyBody?: string; replyContext?: string; taskTitle?: string },
+  payload?: { replyBody?: string; replyContext?: string; taskTitle?: string; subAction?: string },
 ): Promise<ActionResult> {
   // Get the email
   const email = await db.query.emailQueue.findFirst({
@@ -83,13 +83,7 @@ export async function executeAction(
         let body: string;
 
         if (payload?.replyContext) {
-          // User provided context for what the reply should say —
-          // generate a new draft with Claude using their instructions
-          console.log(
-            `Generating reply draft from user context for "${email.subject}"`,
-          );
-
-          // Look up sender summary for context
+          // Legacy path: user provided context via the old override flow
           const senderSummary = await db.query.senderSummaries.findFirst({
             where: eq(senderSummaries.senderEmail, email.fromEmail),
           });
@@ -103,6 +97,8 @@ export async function executeAction(
             senderSummary: senderSummary?.summary ?? null,
           });
         } else {
+          // New path: frontend generates the draft via /queue/:id/draft
+          // and passes the full replyBody here
           body =
             payload?.replyBody ?? email.aiReplyDraft ?? "Thanks for the email!";
         }
@@ -118,16 +114,62 @@ export async function executeAction(
         return { ok: true, draftId };
       }
 
-      case "add_task": {
-        const title =
-          payload?.taskTitle || email.aiTaskTitle || email.subject;
-        const notes = `From: ${email.fromName ?? email.fromEmail}\nSubject: ${email.subject}\n\n${email.aiSummary ?? ""}`.trim();
-        await createTessioTask(userId, title, notes);
-        // Archive after adding task if Gmail is connected
-        if (tokens) {
-          await archiveMessage(tokens, email.gmailMessageId);
+      case "act": {
+        const subAction = payload?.subAction;
+
+        switch (subAction) {
+          case "unsubscribe": {
+            if (!tokens) return { ok: false, error: "Gmail not connected" };
+
+            const unsubResult = await executeUnsubscribe(
+              tokens,
+              email.listUnsubscribe,
+              email.listUnsubscribePost,
+            );
+
+            await archiveMessage(tokens, email.gmailMessageId);
+
+            if (unsubResult.method === "one-click") {
+              return { ok: true, unsubscribeMethod: "one-click" };
+            } else if (unsubResult.method === "mailto") {
+              return { ok: true, unsubscribeMethod: "mailto" };
+            } else if (unsubResult.method === "url") {
+              return { ok: true, unsubscribeMethod: "url", unsubscribeUrl: unsubResult.url };
+            } else {
+              return { ok: true, unsubscribeMethod: "none" };
+            }
+          }
+
+          case "add_task": {
+            const title =
+              payload?.taskTitle || email.aiTaskTitle || email.subject;
+            const notes = `From: ${email.fromName ?? email.fromEmail}\nSubject: ${email.subject}\n\n${email.aiSummary ?? ""}`.trim();
+            await createTessioTask(userId, title, notes);
+            if (tokens) {
+              await archiveMessage(tokens, email.gmailMessageId);
+            }
+            return { ok: true };
+          }
+
+          case "briefing": {
+            if (!tokens) return { ok: false, error: "Gmail not connected" };
+
+            await db
+              .insert(briefingSources)
+              .values({
+                userId,
+                emailAddress: email.fromEmail,
+                displayName: email.fromName ?? email.fromEmail,
+              })
+              .onConflictDoNothing();
+
+            await archiveMessage(tokens, email.gmailMessageId);
+            return { ok: true };
+          }
+
+          default:
+            return { ok: false, error: `Unknown sub-action: ${subAction}` };
         }
-        return { ok: true };
       }
 
       case "archive": {
@@ -136,69 +178,17 @@ export async function executeAction(
         return { ok: true };
       }
 
-      case "unsubscribe": {
-        if (!tokens) return { ok: false, error: "Gmail not connected" };
+      // Backward compat: old clients may still send these as top-level actions
+      case "unsubscribe":
+        return executeAction(userId, emailId, "act", { ...payload, subAction: "unsubscribe" });
 
-        // Try RFC 2369 / RFC 8058 unsubscribe mechanism
-        const unsubResult = await executeUnsubscribe(
-          tokens,
-          email.listUnsubscribe,
-          email.listUnsubscribePost,
-        );
+      case "add_task":
+        return executeAction(userId, emailId, "act", { ...payload, subAction: "add_task" });
 
-        // Always archive the email
-        await archiveMessage(tokens, email.gmailMessageId);
-
-        if (unsubResult.method === "one-click") {
-          return {
-            ok: true,
-            unsubscribeMethod: "one-click",
-          };
-        } else if (unsubResult.method === "mailto") {
-          return {
-            ok: true,
-            unsubscribeMethod: "mailto",
-          };
-        } else if (unsubResult.method === "url") {
-          // Return URL for user to visit manually
-          return {
-            ok: true,
-            unsubscribeMethod: "url",
-            unsubscribeUrl: unsubResult.url,
-          };
-        } else {
-          // No unsubscribe mechanism — just archived
-          return {
-            ok: true,
-            unsubscribeMethod: "none",
-          };
-        }
-      }
-
-      case "briefing": {
-        if (!tokens) return { ok: false, error: "Gmail not connected" };
-
-        // Add sender to briefing sources, archive email
-        await db
-          .insert(briefingSources)
-          .values({
-            userId,
-            emailAddress: email.fromEmail,
-            displayName: email.fromName ?? email.fromEmail,
-          })
-          .onConflictDoNothing();
-
-        await archiveMessage(tokens, email.gmailMessageId);
-        return { ok: true };
-      }
-
-      case "act": {
-        // Mark as processed — user handles the action manually
-        return { ok: true };
-      }
+      case "briefing":
+        return executeAction(userId, emailId, "act", { ...payload, subAction: "briefing" });
 
       case "skip": {
-        // Skip without taking action
         return { ok: true };
       }
 

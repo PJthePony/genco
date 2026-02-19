@@ -174,9 +174,10 @@ export async function classifyPendingEmails(
         .set({
           aiSummary: result.summary,
           aiRecommendedAction: result.recommendedAction,
+          aiRecommendedSubAction: result.recommendedSubAction,
           aiPriority: result.priority,
           isUrgent: result.isUrgent,
-          aiReplyDraft: result.replyDraft,
+          aiReplyDraft: result.replySummary, // repurposed: stores one-line reply summary
           aiTaskTitle: result.taskTitle,
         })
         .where(eq(emailQueue.id, email.id));
@@ -260,8 +261,10 @@ export async function classifyPendingEmails(
       const isBriefingSender = briefingSourceEmails.some(
         (b) => b.toLowerCase() === senderLower,
       );
+      const isActionable = result.recommendedAction === "reply" ||
+        (result.recommendedAction === "act" && result.recommendedSubAction === "add_task");
       if (
-        (result.recommendedAction === "reply" || result.recommendedAction === "add_task") &&
+        isActionable &&
         !networkContactMap.has(senderLower) &&
         !isBriefingSender &&
         !isNoiseEmail(senderLower, userEmail ?? undefined) &&
@@ -336,12 +339,14 @@ export async function classifyPendingEmails(
 
       // Auto-process briefing items — they go straight to the digest,
       // not the decision queue. User doesn't need to approve these.
-      if (result.recommendedAction === "briefing") {
+      // In the new 3-action model, briefing is act + sub-action "briefing"
+      if (result.recommendedAction === "act" && result.recommendedSubAction === "briefing") {
         await db
           .update(emailQueue)
           .set({
             status: "processed",
-            chosenAction: "briefing",
+            chosenAction: "act",
+            chosenSubAction: "briefing",
             processedAt: new Date(),
           })
           .where(eq(emailQueue.id, email.id));
