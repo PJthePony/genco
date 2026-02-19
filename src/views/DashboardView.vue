@@ -78,15 +78,6 @@ async function handleFollowUpDraft(id) {
   }
 }
 
-async function handleScanThreads() {
-  try {
-    await scanThreads()
-    showToast('Thread scan complete')
-  } catch (err) {
-    showToast('Thread scan failed')
-  }
-}
-
 async function handleSaveDraft(id, body) {
   try {
     await saveDraftToGmail(id, body)
@@ -289,12 +280,12 @@ async function handleFeedback(entry) {
   }
 }
 
-// ── Scan ──
+// ── Scan (inbox + threads in one button) ──
 async function handleScan() {
   try {
-    await scanInbox()
+    await Promise.all([scanInbox(), scanThreads()])
     await fetchDigest()
-    showToast('Inbox scanned')
+    showToast('Scan complete')
   } catch (err) {
     showToast('Scan failed — check Gmail connection')
   }
@@ -457,12 +448,12 @@ onUnmounted(() => {
         <button class="btn-scan" :class="{ scanning }" @click="handleScan" :disabled="scanning">
           <svg v-if="!scanning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           <span v-if="scanning" class="scan-spinner"></span>
-          {{ scanning ? 'Scanning…' : 'Scan inbox' }}
+          {{ scanning ? 'Scanning…' : 'Scan' }}
         </button>
       </div>
 
-      <!-- Loading state -->
-      <div v-if="loading && cards.length === 0" class="loading-state">
+      <!-- Loading state — overlaid so it doesn't shift sections -->
+      <div v-if="loading && cards.length === 0" class="loading-overlay">
         <p>Loading your queue…</p>
       </div>
 
@@ -503,7 +494,6 @@ onUnmounted(() => {
         @noise="handleFollowUpNoise"
         @save-draft="handleSaveDraft"
         @send-imessage="handleSendMessage"
-        @scan-threads="handleScanThreads"
         @manage-network="networkModalOpen = true"
       />
 
@@ -651,7 +641,13 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.loading-state,
+.loading-overlay {
+  text-align: center;
+  padding: 12px 20px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
 .error-state {
   text-align: center;
   padding: 40px 20px;

@@ -8,7 +8,7 @@ const props = defineProps({
   scanProgress: Object,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'noise', 'act', 'save-draft', 'send-imessage', 'scan-threads'])
+const emit = defineEmits(['draft', 'snooze', 'dismiss', 'noise', 'act', 'save-draft', 'send-imessage'])
 
 const expanded = ref(props.items.length > 0)
 const expandedCardId = ref(null)
@@ -89,11 +89,7 @@ function handleNoise(id) {
         />
       </template>
       <div v-else class="empty-state">
-        <p>Scan your Gmail threads to find conversations that need attention.</p>
-        <button class="btn-scan" @click.stop="$emit('scan-threads')" :disabled="scanning">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          Scan threads
-        </button>
+        <p>No follow-ups right now. Use the Scan button above to find threads needing attention.</p>
       </div>
     </div>
   </div>
@@ -201,25 +197,6 @@ function handleNoise(id) {
   margin: 0 0 12px;
 }
 
-.btn-scan {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 8px 18px;
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: inherit;
-  border: none;
-  background: var(--color-primary);
-  color: #fff;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.btn-scan:hover:not(:disabled) { background: var(--color-primary-hover); }
-.btn-scan:disabled { opacity: 0.5; cursor: default; }
-
 .scan-progress {
   display: flex;
   align-items: center;
@@ -269,10 +246,6 @@ function handleNoise(id) {
 
   .section-body {
     padding: 0 14px 8px;
-  }
-
-  .btn-scan {
-    padding: 10px 18px;
   }
 
   .scan-progress {
