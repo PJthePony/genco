@@ -18,10 +18,11 @@ const SECTIONS = [
   },
 ]
 
+const ALL_VISIBLE_KEYS = SECTIONS.flatMap(s => s.actionKeys)
+
 export function useGroupedQueue() {
   const {
     items, loading, scanning, error,
-    remaining, urgentCount, allCleared,
     fetchQueue, scanInbox, executeAction, generateDraft,
   } = useQueue()
 
@@ -44,6 +45,15 @@ export function useGroupedQueue() {
       }
     })
   })
+
+  // Only count items that actually appear in a visible section
+  const remaining = computed(() =>
+    items.value.filter(c => !c.cleared && ALL_VISIBLE_KEYS.includes(c.actionKey)).length
+  )
+  const urgentCount = computed(() =>
+    items.value.filter(c => !c.cleared && c.isUrgent && ALL_VISIBLE_KEYS.includes(c.actionKey)).length
+  )
+  const allCleared = computed(() => items.value.length > 0 && remaining.value === 0)
 
   return {
     sections,
