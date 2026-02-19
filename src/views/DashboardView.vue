@@ -492,18 +492,6 @@ onUnmounted(() => {
         @bulk-approve="handleBulkApprove"
       />
 
-      <!-- Archive (low priority cleanup) -->
-      <ActionSection
-        v-if="archiveSection"
-        :section="archiveSection"
-        :bulk-progress="bulkProgress['archive']"
-        @approve="approveCard"
-        @skip="skipCard"
-        @open-email="openEmail"
-        @feedback="handleFeedback"
-        @bulk-approve="handleBulkApprove"
-      />
-
       <!-- Follow Up (proactive outreach) -->
       <FollowUpSection
         :items="followUps"
@@ -517,6 +505,18 @@ onUnmounted(() => {
         @send-imessage="handleSendMessage"
         @scan-threads="handleScanThreads"
         @manage-network="networkModalOpen = true"
+      />
+
+      <!-- Archive (low priority cleanup) -->
+      <ActionSection
+        v-if="archiveSection"
+        :section="archiveSection"
+        :bulk-progress="bulkProgress['archive']"
+        @approve="approveCard"
+        @skip="skipCard"
+        @open-email="openEmail"
+        @feedback="handleFeedback"
+        @bulk-approve="handleBulkApprove"
       />
     </div>
 

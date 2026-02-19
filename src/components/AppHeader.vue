@@ -5,7 +5,9 @@ defineEmits(['open-settings', 'logout'])
 <template>
   <header class="app-header">
     <div class="header-left">
-      <img src="/logo.svg" alt="pjt" width="44" height="42" class="app-logo" />
+      <div class="header-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      </div>
       <span class="app-name">Genco</span>
     </div>
     <div class="header-right">
@@ -38,8 +40,15 @@ defineEmits(['open-settings', 'logout'])
   gap: 10px;
 }
 
-.app-logo {
-  display: block;
+.header-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--color-accent-soft, rgba(249, 115, 22, 0.08));
+  border: 1px solid var(--color-accent-border, rgba(249, 115, 22, 0.15));
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-name {

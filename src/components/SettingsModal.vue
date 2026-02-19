@@ -136,7 +136,12 @@ function timeAgo(timestamp) {
           <div class="settings-label">Email Accounts</div>
           <div v-if="gmailConnected" class="settings-row">
             <span>Gmail</span>
-            <span class="settings-value">{{ gmailEmail }}</span>
+            <div class="settings-row-right">
+              <span class="settings-value">{{ gmailEmail }}</span>
+              <button class="btn-reconnect" @click="connectGmail" :disabled="connectingGmail">
+                {{ connectingGmail ? 'Connecting…' : 'Reconnect' }}
+              </button>
+            </div>
           </div>
           <div v-else class="settings-row">
             <span>Gmail</span>
@@ -646,6 +651,31 @@ function timeAgo(timestamp) {
 .btn-clear-feedback:hover {
   border-color: var(--color-danger);
   color: var(--color-danger);
+}
+
+.btn-reconnect {
+  font-size: 0.68rem;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 3px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-reconnect:hover:not(:disabled) {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.btn-reconnect:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .btn-connect {
