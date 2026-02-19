@@ -23,9 +23,9 @@ defineEmits(['open-settings', 'logout'])
 
 <style scoped>
 .app-header {
-  background: var(--color-surface);
+  background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
-  padding: 14px 20px;
+  padding: 16px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -69,7 +69,7 @@ defineEmits(['open-settings', 'logout'])
   height: 34px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  background: var(--color-bg);
   color: var(--color-text-secondary);
   cursor: pointer;
   display: flex;
@@ -81,11 +81,15 @@ defineEmits(['open-settings', 'logout'])
 
 .header-btn:hover,
 .header-btn:active {
-  background: var(--color-bg);
+  background: var(--color-surface);
   color: var(--color-text);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .app-header {
+    padding: 12px 16px;
+  }
+
   .header-btn {
     width: 44px;
     height: 44px;
