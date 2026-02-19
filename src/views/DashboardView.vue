@@ -713,15 +713,11 @@ onUnmounted(() => {
 
 @media (max-width: 640px) {
   .app-body {
-    padding: 16px 12px 80px;
+    padding: 1rem 1rem 80px;
   }
 
   .briefing-header {
     margin-bottom: 16px;
-  }
-
-  .briefing-title {
-    font-size: 1.05rem;
   }
 
   .briefing-stats {
