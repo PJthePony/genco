@@ -77,6 +77,13 @@ function cancelSubActionPick() {
   pickingSubAction.value = false
 }
 
+function switchAction(newActionKey) {
+  pickingSubAction.value = false
+  props.card.actionKey = newActionKey
+  // Trigger the appropriate two-step flow for the new action
+  approve()
+}
+
 function selectAlt(action, msg) {
   pendingAlt.value = { action, msg }
   feedbackText.value = ''
@@ -184,6 +191,17 @@ function cancelFeedback() {
           <svg v-if="sa.icon === 'book'" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           {{ sa.label }}
           <span v-if="sa.key === card.subActionKey" class="suggested-tag">suggested</span>
+        </button>
+      </div>
+      <div class="sub-action-divider"></div>
+      <div class="sub-action-alts">
+        <button class="btn-sub-alt" @click="switchAction('reply')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+          Reply instead
+        </button>
+        <button class="btn-sub-alt" @click="switchAction('archive')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/></svg>
+          Archive instead
         </button>
       </div>
       <button class="btn-back" @click="cancelSubActionPick">Back</button>
@@ -693,6 +711,47 @@ function cancelFeedback() {
   opacity: 0.8;
 }
 
+.sub-action-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 8px 0;
+}
+
+.sub-action-alts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.btn-sub-alt {
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-sub-alt:hover,
+.btn-sub-alt:active {
+  border-color: var(--color-border-light);
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+}
+
+.btn-sub-alt svg { opacity: 0.4; flex-shrink: 0; }
+.btn-sub-alt:hover svg,
+.btn-sub-alt:active svg { opacity: 0.7; }
+
 .review-textarea {
   width: 100%;
   padding: 10px 12px;
@@ -866,6 +925,12 @@ function cancelFeedback() {
   }
 
   .btn-sub-action {
+    padding: 10px 14px;
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+
+  .btn-sub-alt {
     padding: 10px 14px;
     min-height: 44px;
     flex: 1 1 auto;
