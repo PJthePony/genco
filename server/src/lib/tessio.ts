@@ -30,7 +30,7 @@ export async function createTessioTask(
     body: JSON.stringify({
       title,
       notes: notes || "",
-      location: "later",
+      location: "today",
       tags: ["genco"],
       target_user_id: userId,
     }),
