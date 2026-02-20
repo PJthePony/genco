@@ -23,7 +23,7 @@ const ALL_VISIBLE_KEYS = SECTIONS.flatMap(s => s.actionKeys)
 export function useGroupedQueue() {
   const {
     items, loading, scanning, error,
-    fetchQueue, scanInbox, executeAction, generateDraft,
+    fetchQueue, scanInbox, executeAction, overrideAction, generateDraft,
   } = useQueue()
 
   const sections = computed(() => {
@@ -67,6 +67,7 @@ export function useGroupedQueue() {
     fetchQueue,
     scanInbox,
     executeAction,
+    overrideAction,
     generateDraft,
   }
 }

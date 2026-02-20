@@ -13,6 +13,7 @@ const emit = defineEmits([
   'skip',
   'open-email',
   'feedback',
+  'override',
   'bulk-approve',
 ])
 
@@ -115,6 +116,7 @@ function handleSkip(cardId) {
             @skip="handleSkip"
             @open-email="$emit('open-email', $event)"
             @feedback="$emit('feedback', $event)"
+            @override="$emit('override', $event)"
           />
         </div>
         <CompactRow

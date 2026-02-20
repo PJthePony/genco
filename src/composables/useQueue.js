@@ -55,9 +55,10 @@ function normalizeAction(rawAction, rawSubAction) {
 }
 
 function toCard(item) {
+  // Prefer user override (chosenAction) over AI recommendation if still pending
   const { action, subAction } = normalizeAction(
-    item.aiRecommendedAction,
-    item.aiRecommendedSubAction,
+    item.chosenAction || item.aiRecommendedAction,
+    item.chosenSubAction ?? item.aiRecommendedSubAction,
   )
   return {
     id: item.id,
@@ -192,6 +193,21 @@ export function useQueue() {
   }
 
   /**
+   * Persist a user action override without executing.
+   * Keeps the item pending but saves the new action server-side.
+   */
+  async function overrideAction(cardId, action, subAction = null) {
+    try {
+      await api(`/queue/${cardId}/override`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action, subAction }),
+      })
+    } catch (err) {
+      console.error('Override failed:', err)
+    }
+  }
+
+  /**
    * Generate a full reply draft from a direction/summary string.
    * Returns { draft } with the full reply body.
    */
@@ -223,6 +239,7 @@ export function useQueue() {
     fetchQueue,
     scanInbox,
     executeAction,
+    overrideAction,
     generateDraft,
   }
 }

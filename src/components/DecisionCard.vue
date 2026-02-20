@@ -5,7 +5,7 @@ const props = defineProps({
   card: Object,
 })
 
-const emit = defineEmits(['approve', 'skip', 'open-email', 'feedback'])
+const emit = defineEmits(['approve', 'skip', 'open-email', 'feedback', 'override'])
 
 const showingAlts = ref(false)
 const pendingAlt = ref(null)
@@ -80,6 +80,8 @@ function cancelSubActionPick() {
 function switchAction(newActionKey) {
   pickingSubAction.value = false
   props.card.actionKey = newActionKey
+  // Persist the override server-side (fire-and-forget)
+  emit('override', { cardId: props.card.id, action: newActionKey, subAction: null })
   // Trigger the appropriate two-step flow for the new action
   approve()
 }
@@ -103,7 +105,11 @@ function submitFeedback() {
   // Update card's actionKey to reflect the override, then approve
   const ACTION_KEY_MAP = { 'Reply': 'reply', 'Act': 'act', 'Archive': 'archive' }
   const newKey = ACTION_KEY_MAP[pendingAlt.value.action]
-  if (newKey) props.card.actionKey = newKey
+  if (newKey) {
+    props.card.actionKey = newKey
+    // Persist the override server-side (fire-and-forget)
+    emit('override', { cardId: props.card.id, action: newKey, subAction: null })
+  }
   pendingAlt.value = null
   feedbackText.value = ''
   // Trigger the two-step flow for the new action
@@ -121,7 +127,10 @@ function skipFeedback() {
   })
   const ACTION_KEY_MAP = { 'Reply': 'reply', 'Act': 'act', 'Archive': 'archive' }
   const newKey = ACTION_KEY_MAP[pendingAlt.value.action]
-  if (newKey) props.card.actionKey = newKey
+  if (newKey) {
+    props.card.actionKey = newKey
+    emit('override', { cardId: props.card.id, action: newKey, subAction: null })
+  }
   pendingAlt.value = null
   feedbackText.value = ''
   approve()

@@ -63,6 +63,8 @@ queueRoutes.get("/", async (c) => {
       aiReplyDraft: true,
       aiTaskTitle: true,
       isUrgent: true,
+      chosenAction: true,
+      chosenSubAction: true,
     },
   });
 
@@ -305,6 +307,49 @@ queueRoutes.post("/sync-archives", async (c) => {
   }
 
   return c.json({ ok: true, archived, total: items.length });
+});
+
+// PATCH /queue/:id/override — persist a user action override without executing
+const overrideSchema = z.object({
+  action: z.enum(["reply", "act", "archive"] as const),
+  subAction: z.enum(VALID_SUB_ACTIONS).nullish(),
+});
+
+queueRoutes.patch("/:id/override", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return c.json({ error: "Invalid email ID" }, 400);
+  }
+
+  const rawBody = await c.req.json().catch(() => null);
+  const parsed = overrideSchema.safeParse(rawBody);
+
+  if (!parsed.success) {
+    return c.json(
+      { error: "Invalid request", details: parsed.error.flatten().fieldErrors },
+      400,
+    );
+  }
+
+  const body = parsed.data;
+
+  await db
+    .update(emailQueue)
+    .set({
+      chosenAction: body.action,
+      chosenSubAction: body.subAction ?? null,
+    })
+    .where(
+      and(
+        eq(emailQueue.id, id),
+        eq(emailQueue.userId, user.sub),
+        eq(emailQueue.status, "pending"),
+      ),
+    );
+
+  return c.json({ ok: true });
 });
 
 // POST /queue/:id/action — record chosen action + execute

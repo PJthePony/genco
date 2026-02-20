@@ -18,7 +18,7 @@ import ToastNotification from '../components/ToastNotification.vue'
 
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
-const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, generateDraft: generateReplyDraft } = useGroupedQueue()
+const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, overrideAction, generateDraft: generateReplyDraft } = useGroupedQueue()
 const { items: digestItems, fetchDigest, promoteItem } = useDigest()
 const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
 const { markSeen, startPolling, stopPolling } = useUnread()
@@ -293,6 +293,11 @@ async function handleFeedback(entry) {
   }
 }
 
+function handleOverride(entry) {
+  // Persist the action override server-side (fire-and-forget)
+  overrideAction(entry.cardId, entry.action, entry.subAction || null)
+}
+
 // ── Scan (inbox + threads in one button) ──
 async function handleScan() {
   try {
@@ -500,6 +505,7 @@ onUnmounted(() => {
         @skip="skipCard"
         @open-email="openEmail"
         @feedback="handleFeedback"
+        @override="handleOverride"
         @bulk-approve="handleBulkApprove"
       />
 
@@ -526,6 +532,7 @@ onUnmounted(() => {
         @skip="skipCard"
         @open-email="openEmail"
         @feedback="handleFeedback"
+        @override="handleOverride"
         @bulk-approve="handleBulkApprove"
       />
     </div>
