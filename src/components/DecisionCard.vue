@@ -119,6 +119,12 @@ function skipFeedback() {
   feedbackText.value = ''
   approve()
 }
+
+function cancelFeedback() {
+  pendingAlt.value = null
+  feedbackText.value = ''
+  // Alt panel stays visible so user can re-choose
+}
 </script>
 
 <template>
@@ -235,6 +241,7 @@ function skipFeedback() {
         <div class="feedback-actions">
           <button type="submit" class="btn-feedback-send" :disabled="!feedbackText.trim()">Send</button>
           <button type="button" class="btn-feedback-skip" @click="skipFeedback">Skip</button>
+          <button type="button" class="btn-back feedback-back" @click="cancelFeedback">Back</button>
         </div>
       </form>
     </div>
@@ -603,6 +610,8 @@ function skipFeedback() {
 }
 
 .btn-feedback-skip:hover { color: var(--color-text-secondary); }
+
+.feedback-back { margin-left: auto; }
 
 /* ── Reply Review Step ── */
 .reply-review {

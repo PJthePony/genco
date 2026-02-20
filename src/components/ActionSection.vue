@@ -51,9 +51,9 @@ function handleQuickApprove(card) {
     expandedCardId.value = card.id
     return
   }
-  // Act cards with a sub-action can quick-approve directly
-  if (card.actionKey === 'act' && card.subActionKey) {
-    emit('approve', card.id, card.subActionMsg, { subAction: card.subActionKey })
+  // Act cards always need the sub-action picker — expand so user can confirm or change
+  if (card.actionKey === 'act') {
+    expandedCardId.value = card.id
     return
   }
   // Archive — direct approve
