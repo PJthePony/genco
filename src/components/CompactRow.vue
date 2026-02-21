@@ -27,8 +27,10 @@ function truncate(text, max) {
     </div>
     <div class="compact-right">
       <span class="compact-tag" :class="'tag-' + card.actionKey">{{ card.subAction || card.action }}</span>
-      <button class="compact-approve" @click.stop="$emit('quick-approve')" aria-label="Approve">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      <button class="compact-approve" :class="{ dismiss: card.type === 'message' }" @click.stop="$emit('quick-approve')" :aria-label="card.type === 'message' ? 'Dismiss' : 'Approve'">
+        <!-- iMessages: X icon (dismiss) — emails: checkmark (approve) -->
+        <svg v-if="card.type === 'message'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </button>
     </div>
   </div>
@@ -184,6 +186,13 @@ function truncate(text, max) {
   color: var(--color-success);
   border-color: var(--color-success);
   background: var(--color-success-soft);
+}
+
+.compact-approve.dismiss:hover,
+.compact-approve.dismiss:active {
+  color: var(--color-text-muted);
+  border-color: var(--color-border-light);
+  background: var(--color-bg);
 }
 
 @media (max-width: 768px) {

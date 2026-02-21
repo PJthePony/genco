@@ -54,7 +54,7 @@ export async function detectFollowUps(
   );
 
   const now = new Date();
-  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   // ── Rule 1: Ball in your court ──────────────────────────────────────────
@@ -86,11 +86,11 @@ export async function detectFollowUps(
   }
 
   // ── Rule 2: Went cold ──────────────────────────────────────────────────
-  // Last contact was 14+ days ago, thread wasn't concluded
+  // Last contact was 30+ days ago, thread wasn't concluded
   for (const contact of contacts) {
     if (
       contact.lastContactAt &&
-      contact.lastContactAt < fourteenDaysAgo &&
+      contact.lastContactAt < thirtyDaysAgo &&
       contact.threadStatus !== "conversation_ended" &&
       !existingSet.has(`${contact.id}:went_cold`)
     ) {

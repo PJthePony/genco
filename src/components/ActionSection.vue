@@ -12,7 +12,6 @@ const emit = defineEmits([
   'approve',
   'skip',
   'open-email',
-  'feedback',
   'override',
   'bulk-approve',
 ])
@@ -47,17 +46,22 @@ function handleApprove(cardId, msg, extra) {
 }
 
 function handleQuickApprove(card) {
-  // Reply cards always need the two-step flow — expand
+  // iMessages → instant dismiss (they're already handled on the phone)
+  if (card.type === 'message') {
+    emit('approve', card.id, 'Dismissed')
+    return
+  }
+  // Reply → must expand (needs reply direction textarea)
   if (card.actionKey === 'reply') {
     expandedCardId.value = card.id
     return
   }
-  // Act cards always need the sub-action picker — expand so user can confirm or change
-  if (card.actionKey === 'act') {
-    expandedCardId.value = card.id
+  // Act with known sub-action → execute immediately (one tap)
+  if (card.actionKey === 'act' && card.subActionKey) {
+    emit('approve', card.id, null, { subAction: card.subActionKey })
     return
   }
-  // Archive — direct approve
+  // Archive / other → execute
   emit('approve', card.id, card.actionMsg)
 }
 
@@ -115,7 +119,6 @@ function handleSkip(cardId) {
             @approve="handleApprove"
             @skip="handleSkip"
             @open-email="$emit('open-email', $event)"
-            @feedback="$emit('feedback', $event)"
             @override="$emit('override', $event)"
           />
         </div>

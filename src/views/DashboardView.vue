@@ -271,28 +271,6 @@ async function skipCard(cardId) {
   }
 }
 
-async function handleFeedback(entry) {
-  // Card's actionKey is already updated by DecisionCard before emitting feedback.
-  // Just record the feedback.
-  addFeedback(entry)
-
-  // Save feedback to backend (fire-and-forget, doesn't block approve)
-  try {
-    await api('/feedback', {
-      method: 'POST',
-      body: JSON.stringify({
-        emailQueueId: entry.cardId,
-        sender: entry.sender,
-        originalAction: entry.originalAction,
-        chosenAction: entry.chosenAction,
-        reason: entry.reason,
-      }),
-    })
-  } catch (err) {
-    console.error('Failed to save feedback:', err)
-  }
-}
-
 function handleOverride(entry) {
   // Persist the action override server-side (fire-and-forget)
   overrideAction(entry.cardId, entry.action, entry.subAction || null)
@@ -504,7 +482,7 @@ onUnmounted(() => {
         @approve="approveCard"
         @skip="skipCard"
         @open-email="openEmail"
-        @feedback="handleFeedback"
+
         @override="handleOverride"
         @bulk-approve="handleBulkApprove"
       />
@@ -531,7 +509,7 @@ onUnmounted(() => {
         @approve="approveCard"
         @skip="skipCard"
         @open-email="openEmail"
-        @feedback="handleFeedback"
+
         @override="handleOverride"
         @bulk-approve="handleBulkApprove"
       />
