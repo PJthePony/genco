@@ -207,11 +207,29 @@ async function approveCard(cardId, message, extra = {}) {
     if (card.actionKey === 'reply' && extra.replyDirection !== undefined) {
       showToast('Generating draft…')
       const draftResult = await generateReplyDraft(cardId, extra.replyDirection)
+
+      // iMessages: show the draft for review before sending
+      if (card.type === 'message') {
+        card.pendingReply = draftResult.draft
+        return
+      }
+
+      // Emails: save as Gmail Draft (user reviews in Gmail)
       const result = await executeAction(cardId, 'reply', {
         replyBody: draftResult.draft,
       })
       card.cleared = true
       showToast('Reply draft created')
+      return
+    }
+
+    // iMessage reply: user approved the reviewed draft text
+    if (extra.approvedReply) {
+      const result = await executeAction(cardId, 'reply', {
+        replyBody: extra.approvedReply,
+      })
+      card.cleared = true
+      showToast('Message queued')
       return
     }
 
@@ -238,10 +256,14 @@ async function approveCard(cardId, message, extra = {}) {
       return
     }
 
-    // Archive / other — direct execute
-    const result = await executeAction(cardId, card.actionKey, {
-      taskTitle: card.taskTitle,
-    })
+    // Archive / other — use override action if user picked a different action
+    const effectiveAction = extra.overrideAction || card.actionKey
+    const payload = { taskTitle: card.taskTitle }
+    // Always include subAction when executing 'act' to avoid server rejection
+    if (effectiveAction === 'act') {
+      payload.subAction = extra.subAction || card.subActionKey
+    }
+    const result = await executeAction(cardId, effectiveAction, payload)
     card.cleared = true
 
     // Handle unsubscribe result (backward compat for old cards)
@@ -326,6 +348,9 @@ async function handleBulkApprove(sectionKey) {
           subAction: card.subActionKey,
           taskTitle: card.taskTitle,
         })
+      } else if (card.actionKey === 'act') {
+        // act without sub-action — skip this card in bulk
+        return
       } else {
         await executeAction(card.id, card.actionKey, {
           taskTitle: card.taskTitle,

@@ -61,6 +61,11 @@ function handleQuickApprove(card) {
     emit('approve', card.id, null, { subAction: card.subActionKey })
     return
   }
+  // Act without sub-action → expand so user picks a specific action
+  if (card.actionKey === 'act') {
+    expandedCardId.value = card.id
+    return
+  }
   // Archive / other → execute
   emit('approve', card.id, card.actionMsg)
 }

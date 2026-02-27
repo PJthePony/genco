@@ -55,10 +55,13 @@ function normalizeAction(rawAction, rawSubAction) {
 }
 
 function toCard(item) {
-  // Prefer user override (chosenAction) over AI recommendation if still pending
+  // Prefer user override (chosenAction) over AI recommendation if still pending.
+  // When the user has overridden the action, use their chosen sub-action (even if null)
+  // rather than falling back to the AI sub-action, which could be stale.
+  const hasOverride = !!item.chosenAction
   const { action, subAction } = normalizeAction(
     item.chosenAction || item.aiRecommendedAction,
-    item.chosenSubAction ?? item.aiRecommendedSubAction,
+    hasOverride ? (item.chosenSubAction || null) : item.aiRecommendedSubAction,
   )
   return {
     id: item.id,
@@ -209,11 +212,17 @@ export function useQueue() {
 
   /**
    * Generate a full reply draft from a direction/summary string.
+   * Routes to the correct endpoint based on card type (email vs message).
    * Returns { draft } with the full reply body.
    */
   async function generateDraft(cardId, direction) {
+    const card = items.value.find(c => c.id === cardId)
+    const endpoint = card?.type === 'message'
+      ? `/messages/${cardId}/draft`
+      : `/queue/${cardId}/draft`
+
     try {
-      const data = await api(`/queue/${cardId}/draft`, {
+      const data = await api(endpoint, {
         method: 'POST',
         body: JSON.stringify({ direction }),
       })
