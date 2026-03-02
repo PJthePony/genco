@@ -1,7 +1,10 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
+import { eq, and, isNull, isNotNull, count, sql } from "drizzle-orm";
 import { env } from "./config.js";
+import { db } from "./db/index.js";
+import { emailQueue, messageQueue, outboundMessages } from "./db/schema.js";
 import { getAllowedOrigin, setCorsHeaders } from "./lib/cors.js";
 import { authRoutes } from "./routes/auth.js";
 import { queueRoutes } from "./routes/queue.js";
@@ -46,6 +49,60 @@ app.use("*", async (c, next) => {
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
+
+// Status dashboard — no auth, quick pipeline overview
+app.get("/status", async (c) => {
+  const [emails, messages, outbound] = await Promise.all([
+    db
+      .select({
+        status: emailQueue.status,
+        count: count(),
+      })
+      .from(emailQueue)
+      .groupBy(emailQueue.status),
+    db
+      .select({
+        status: messageQueue.status,
+        count: count(),
+      })
+      .from(messageQueue)
+      .groupBy(messageQueue.status),
+    db
+      .select({
+        status: outboundMessages.status,
+        count: count(),
+      })
+      .from(outboundMessages)
+      .groupBy(outboundMessages.status),
+  ]);
+
+  // Count unclassified (pending + no AI summary)
+  const [unclassifiedEmails] = await db
+    .select({ count: count() })
+    .from(emailQueue)
+    .where(and(eq(emailQueue.status, "pending"), isNull(emailQueue.aiSummary)));
+
+  const [unclassifiedMessages] = await db
+    .select({ count: count() })
+    .from(messageQueue)
+    .where(
+      and(eq(messageQueue.status, "pending"), isNull(messageQueue.aiSummary)),
+    );
+
+  const toMap = (rows: { status: string | null; count: number }[]) =>
+    Object.fromEntries(rows.map((r) => [r.status ?? "null", r.count]));
+
+  return c.json({
+    status: "ok",
+    uptime: Math.floor(process.uptime()),
+    emails: { ...toMap(emails), unclassified: unclassifiedEmails?.count ?? 0 },
+    messages: {
+      ...toMap(messages),
+      unclassified: unclassifiedMessages?.count ?? 0,
+    },
+    outbound: toMap(outbound),
+  });
+});
 
 // API routes
 app.route("/auth", authRoutes);

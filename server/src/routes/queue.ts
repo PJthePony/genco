@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, desc, isNotNull, gte, or, inArray, count } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { emailQueue, gmailConnections } from "../db/schema.js";
+import { emailQueue, gmailConnections, networkContacts } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
 import { archiveMessage, unarchiveMessage, refreshAccessToken, type GoogleTokens } from "../lib/gmail.js";
@@ -374,12 +374,16 @@ queueRoutes.post("/:id/action", async (c) => {
 
   const body = parsed.data;
 
+  // Safety: strip subAction for non-act actions to prevent stale AI
+  // recommendations from leaking through (e.g. archiving a task-suggested email)
+  const subAction = body.action === "act" ? (body.subAction ?? undefined) : undefined;
+
   // Execute the action
   const result = await executeAction(user.sub, id, body.action, {
     replyBody: body.replyBody ?? undefined,
     replyContext: body.replyContext ?? undefined,
     taskTitle: body.taskTitle ?? undefined,
-    subAction: body.subAction ?? undefined,
+    subAction,
   });
 
   if (!result.ok) {
@@ -392,10 +396,37 @@ queueRoutes.post("/:id/action", async (c) => {
     .set({
       status: body.action === "skip" ? "skipped" : "processed",
       chosenAction: body.action,
-      chosenSubAction: body.subAction ?? null,
+      chosenSubAction: subAction ?? null,
       processedAt: new Date(),
     })
     .where(and(eq(emailQueue.id, id), eq(emailQueue.userId, user.sub)));
+
+  // When P.J. replies, update the network contact's thread status so the
+  // follow-up detector doesn't keep nagging about this thread.
+  if (body.action === "reply") {
+    const email = await db.query.emailQueue.findFirst({
+      where: eq(emailQueue.id, id),
+      columns: { fromEmail: true },
+    });
+    if (email) {
+      try {
+        await db
+          .update(networkContacts)
+          .set({
+            lastDirection: "sent",
+            threadStatus: "awaiting_their_reply",
+          })
+          .where(
+            and(
+              eq(networkContacts.userId, user.sub),
+              eq(networkContacts.email, email.fromEmail.toLowerCase()),
+            ),
+          );
+      } catch (_) {
+        // Non-fatal — contact might not be in network
+      }
+    }
+  }
 
   return c.json({
     ok: true,

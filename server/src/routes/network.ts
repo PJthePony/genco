@@ -850,30 +850,69 @@ networkRoutes.post("/scan-threads", async (c) => {
               // Skip contacts with "conversation_ended" status
               if (contact.threadStatus === "conversation_ended") continue;
 
-              // Check if P.J. has already replied to this thread
-              // Look through thread messages for any from P.J. after the last inbound
-              let pjRepliedAfterLast = false;
-              for (const msg of messages) {
-                const msgHeaders: Record<string, string> = {};
-                for (const h of msg.payload?.headers ?? []) {
-                  if (h.name && h.value) {
-                    msgHeaders[h.name.toLowerCase()] = h.value;
+              // Check if P.J. has replied to this thread after the contact's
+              // second-to-last message. We know the contact sent the last message
+              // (we filtered out P.J.-last threads above). Walk through all
+              // messages to find the latest non-PJ message before the last one,
+              // then check if P.J. replied between it and the contact's last msg.
+              //
+              // More precisely: find the last message from the contact, then check
+              // if P.J. sent ANY message after the previous contact message.
+              // If the last message is the ONLY message from the contact, check
+              // if P.J. sent anything after any earlier message.
+              let pjRepliedAfterPrevious = false;
+              {
+                // Parse all messages with sender + date
+                const threadMsgs = messages.map((msg: any) => {
+                  const mh: Record<string, string> = {};
+                  for (const h of msg.payload?.headers ?? []) {
+                    if (h.name && h.value) mh[h.name.toLowerCase()] = h.value;
                   }
-                }
-                const msgFrom = msgHeaders["from"] ?? "";
-                const msgFromMatch = msgFrom.match(/<([^>]+)>/) ?? [null, msgFrom];
-                const msgSender = (msgFromMatch[1] ?? msgFrom).toLowerCase().trim();
-                const msgDate = msgHeaders["date"]
-                  ? new Date(msgHeaders["date"]).getTime()
-                  : 0;
+                  const mFrom = mh["from"] ?? "";
+                  const mMatch = mFrom.match(/<([^>]+)>/) ?? [null, mFrom];
+                  return {
+                    sender: (mMatch[1] ?? mFrom).toLowerCase().trim(),
+                    date: mh["date"] ? new Date(mh["date"]).getTime() : 0,
+                  };
+                });
 
-                if (msgSender === userEmail && msgDate > lastDate) {
-                  pjRepliedAfterLast = true;
-                  break;
+                // Find the second-to-last contact message (the one P.J. should
+                // have replied to before the contact sent again)
+                const contactMsgs = threadMsgs.filter((m: any) => m.sender !== userEmail);
+                if (contactMsgs.length >= 2) {
+                  const prevContactDate = contactMsgs[contactMsgs.length - 2].date;
+                  // Check if P.J. replied between the previous and last contact messages
+                  pjRepliedAfterPrevious = threadMsgs.some(
+                    (m: any) => m.sender === userEmail && m.date > prevContactDate,
+                  );
+                }
+                // If there's only one contact message, check if P.J. sent anything at all
+                if (contactMsgs.length === 1) {
+                  pjRepliedAfterPrevious = false; // no previous msg to reply to
                 }
               }
 
-              if (pjRepliedAfterLast) continue;
+              // If P.J. already replied after the previous contact message but the
+              // contact sent again, that's a NEW message — P.J. needs to respond.
+              // We only skip if there's clear evidence this was already handled.
+              // Check the email queue: was this contact's latest email already
+              // processed (reply/archive) in Genco?
+              let alreadyProcessedInGenco = false;
+              try {
+                const latestQueued = await db.query.emailQueue.findFirst({
+                  where: and(
+                    eq(emailQueue.userId, user.sub),
+                    eq(emailQueue.fromEmail, contact.email),
+                  ),
+                  orderBy: (eq: any, { desc: d }: any) => [d(eq.receivedAt)],
+                  columns: { chosenAction: true },
+                });
+                if (latestQueued?.chosenAction === "reply" || latestQueued?.chosenAction === "archive") {
+                  alreadyProcessedInGenco = true;
+                }
+              } catch (_) {}
+
+              if (alreadyProcessedInGenco) continue;
 
               // Update network contact thread state
               await db

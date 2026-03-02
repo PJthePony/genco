@@ -277,6 +277,64 @@ userRoutes.get("/queue", async (c) => {
   return c.json({ items: classified, total: classified.length });
 });
 
+// POST /messages/:id/draft — generate a reply draft without sending
+const messageDraftSchema = z.object({
+  direction: z.string().min(1).max(1000),
+});
+
+userRoutes.post("/:id/draft", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: "Invalid message ID" }, 400);
+  }
+
+  const rawBody = await c.req.json().catch(() => null);
+  const parsed = messageDraftSchema.safeParse(rawBody);
+
+  if (!parsed.success) {
+    return c.json(
+      { error: "Invalid request", details: parsed.error.flatten().fieldErrors },
+      400,
+    );
+  }
+
+  const msg = await db.query.messageQueue.findFirst({
+    where: and(eq(messageQueue.id, id), eq(messageQueue.userId, user.sub)),
+  });
+
+  if (!msg) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+
+  // Look up sender context
+  const matchedContact = await db.query.networkContacts.findFirst({
+    where: and(
+      eq(networkContacts.userId, user.sub),
+      eq(networkContacts.phoneNumber, msg.senderPhone),
+    ),
+  });
+
+  let senderSummary: string | null = null;
+  if (matchedContact) {
+    const summary = await db.query.senderSummaries.findFirst({
+      where: eq(senderSummaries.senderEmail, matchedContact.email),
+    });
+    senderSummary = summary?.summary ?? null;
+  }
+
+  const draft = await generateMessageReplyDraft({
+    senderName: msg.senderName ?? "",
+    senderPhone: msg.senderPhone,
+    messageText: msg.messageText,
+    replyContext: parsed.data.direction,
+    senderSummary,
+  });
+
+  return c.json({ draft });
+});
+
 // POST /messages/:id/action — take action on a message
 const messageActionSchema = z.object({
   action: z.enum(["reply", "add_task", "archive", "skip"]),

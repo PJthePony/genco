@@ -70,7 +70,7 @@ export async function classifyPendingEmails(
     allSummaries.map((s) => [s.senderEmail, s]),
   );
 
-  // Load network contacts for personal context extraction
+  // Load network contacts for personal context extraction and name lookup
   let networkContactMap = new Map<string, string>();
   try {
     const networkContactsList = await db.query.networkContacts.findMany({
@@ -365,7 +365,9 @@ export async function classifyPendingEmails(
       }
 
       processed++;
-      if (result.isUrgent) urgent++;
+      if (result.isUrgent) {
+        urgent++;
+      }
 
       console.log(
         `Classified: "${email.subject}" → ${result.recommendedAction} (${result.priority}${result.isUrgent ? ", URGENT" : ""})`,

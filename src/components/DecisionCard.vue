@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 
 const props = defineProps({
   card: Object,
@@ -11,6 +11,21 @@ const emit = defineEmits(['approve', 'skip', 'open-email', 'override'])
 const reviewingReply = ref(false)
 const replySummaryText = ref('')
 const reviewTextarea = ref(null)
+
+// ── iMessage draft review state ──
+const reviewingDraft = ref(false)
+const draftText = ref('')
+const draftTextarea = ref(null)
+
+// When the parent sets pendingReply on the card, enter draft review mode
+watch(() => props.card.pendingReply, (val) => {
+  if (val) {
+    draftText.value = val
+    reviewingReply.value = false
+    reviewingDraft.value = true
+    nextTick(() => draftTextarea.value?.focus())
+  }
+})
 
 // ── All available actions for the flat palette ──
 const ALL_ACTIONS = [
@@ -70,7 +85,7 @@ function handleAction(action) {
 
   // Archive
   if (action.key === 'archive') {
-    emit('approve', card.id, 'Archived')
+    emit('approve', card.id, 'Archived', { overrideAction: 'archive' })
     return
   }
 
@@ -93,6 +108,19 @@ function confirmReply() {
 function cancelReview() {
   reviewingReply.value = false
   replySummaryText.value = ''
+}
+
+function confirmDraft() {
+  const body = draftText.value.trim()
+  reviewingDraft.value = false
+  props.card.pendingReply = null
+  emit('approve', props.card.id, 'Message queued', { approvedReply: body })
+}
+
+function cancelDraft() {
+  reviewingDraft.value = false
+  draftText.value = ''
+  props.card.pendingReply = null
 }
 </script>
 
@@ -134,6 +162,26 @@ function cancelReview() {
           Generate Draft
         </button>
         <button class="btn btn-cancel-review" @click="cancelReview">Back</button>
+      </div>
+    </div>
+
+    <!-- iMessage draft review step — shows generated reply for approval/editing -->
+    <div v-else-if="reviewingDraft" class="reply-review">
+      <div class="review-label">Review reply</div>
+      <textarea
+        ref="draftTextarea"
+        v-model="draftText"
+        class="review-textarea"
+        rows="3"
+        placeholder="Reply text…"
+      />
+      <div class="review-hint">This will be sent as an iMessage. Edit if needed.</div>
+      <div class="review-actions">
+        <button class="btn btn-send-reply" :disabled="!draftText.trim()" @click="confirmDraft">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Send
+        </button>
+        <button class="btn btn-cancel-review" @click="cancelDraft">Cancel</button>
       </div>
     </div>
 

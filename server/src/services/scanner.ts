@@ -281,10 +281,14 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
 /**
  * Detect follow-up opportunities from network contacts.
  *
- * Pure SQL — no Gmail API calls. Runs after each inbox scan to check:
+ * Runs after each inbox scan to check:
  * 1. ball_in_your_court: contact's thread awaiting your reply for 2+ days
  * 2. went_cold: no activity for 14+ days (and not marked conversation_ended)
  * 3. date_coming_up: personal facts with dateRelevant in the next 7 days
+ *
+ * For "ball_in_your_court", verifies P.J. hasn't already replied by checking:
+ *   a) Whether the email was already processed in Genco (reply or archive action)
+ *   b) Whether P.J. replied in the Gmail thread directly
  *
  * Skips contacts that already have a pending/snoozed follow-up for the same reason.
  */
@@ -326,6 +330,29 @@ async function detectFollowUps(userId: string): Promise<number> {
     existingFollowUps.map((fu) => `${fu.networkContactId}:${fu.reason}`),
   );
 
+  // Get Gmail tokens + user email for thread reply checking
+  const gmailConnection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, userId),
+  });
+  let gmailTokens: GoogleTokens | null = null;
+  let userEmail: string | null = null;
+  if (gmailConnection) {
+    gmailTokens = gmailConnection.googleTokens as GoogleTokens;
+    userEmail = gmailConnection.gmailAddress?.toLowerCase() ?? null;
+    // Refresh if expiring soon
+    if (gmailTokens.expiry_date && gmailTokens.expiry_date < Date.now() + 5 * 60 * 1000) {
+      try {
+        gmailTokens = await refreshAccessToken(gmailTokens);
+        await db
+          .update(gmailConnections)
+          .set({ googleTokens: gmailTokens, updatedAt: new Date() })
+          .where(eq(gmailConnections.id, gmailConnection.id));
+      } catch {
+        gmailTokens = null;
+      }
+    }
+  }
+
   let created = 0;
 
   for (const contact of contacts) {
@@ -353,10 +380,61 @@ async function detectFollowUps(userId: string): Promise<number> {
             eq(emailQueue.fromEmail, contact.email),
           ),
           orderBy: (eq, { desc }) => [desc(eq.receivedAt)],
-          columns: { aiRecommendedAction: true },
+          columns: {
+            aiRecommendedAction: true,
+            chosenAction: true,
+            gmailThreadId: true,
+            receivedAt: true,
+          },
         });
 
         if (latestEmail?.aiRecommendedAction !== "reply") continue;
+
+        // Skip if P.J. already handled this email in Genco
+        if (latestEmail.chosenAction === "reply" || latestEmail.chosenAction === "archive") {
+          // Update contact status since P.J. took action
+          await db
+            .update(networkContacts)
+            .set({
+              threadStatus: latestEmail.chosenAction === "reply"
+                ? "awaiting_their_reply"
+                : "dormant",
+            })
+            .where(eq(networkContacts.id, contact.id));
+          continue;
+        }
+
+        // Check Gmail: did P.J. reply to this thread directly (outside Genco)?
+        if (gmailTokens && userEmail && latestEmail.gmailThreadId) {
+          try {
+            const replied = await hasUserRepliedToThread(
+              gmailTokens,
+              latestEmail.gmailThreadId,
+              userEmail,
+              latestEmail.receivedAt,
+            );
+            if (replied) {
+              // P.J. already responded — update contact and skip
+              await db
+                .update(networkContacts)
+                .set({
+                  lastDirection: "sent",
+                  threadStatus: "awaiting_their_reply",
+                })
+                .where(eq(networkContacts.id, contact.id));
+              console.log(
+                `Follow-up skipped: ${contact.displayName} — P.J. already replied in Gmail`,
+              );
+              continue;
+            }
+          } catch (err) {
+            // Non-fatal — fall through to create follow-up if check fails
+            console.warn(
+              `Thread reply check failed for ${contact.email}:`,
+              err,
+            );
+          }
+        }
 
         const daysAgo = Math.floor((now - lastContactTime) / (24 * 60 * 60 * 1000));
         await db.insert(followUpQueue).values({

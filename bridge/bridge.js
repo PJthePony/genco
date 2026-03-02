@@ -136,13 +136,22 @@ function readRecentMessages(lookbackMinutes) {
 
 const nameCache = new Map();
 
-function lookupContactName(phone) {
-  if (nameCache.has(phone)) return nameCache.get(phone);
+function lookupContactName(handle) {
+  if (nameCache.has(handle)) return nameCache.get(handle);
+
+  const isEmail = handle.includes("@");
+  const escaped = handle.replace(/"/g, '\\"');
 
   try {
+    // Search by email or phone depending on handle type
+    const searchClause = isEmail
+      ? `every person whose value of every email of it contains "${escaped}"`
+      : `every person whose value of every phone of it contains "${escaped}"`;
+
     const script = `
       tell application "Contacts"
-        set matchingPeople to (every person whose value of every phone of it contains "${phone.replace(/"/g, '\\"')}")
+        launch
+        set matchingPeople to (${searchClause})
         if (count of matchingPeople) > 0 then
           set p to item 1 of matchingPeople
           return (first name of p & " " & last name of p)
@@ -155,10 +164,10 @@ function lookupContactName(phone) {
       timeout: 5000,
       encoding: "utf-8",
     }).trim();
-    nameCache.set(phone, result || null);
+    nameCache.set(handle, result || null);
     return result || null;
   } catch {
-    nameCache.set(phone, null);
+    nameCache.set(handle, null);
     return null;
   }
 }
