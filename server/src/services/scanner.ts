@@ -210,6 +210,7 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
                 lastContactAt: email.receivedAt,
                 lastDirection: "sent",
                 threadStatus: "awaiting_their_reply",
+                dismissedGmailThreadId: null,
                 gmailThreadId: email.gmailThreadId,
                 lastSubject: email.subject,
               })
@@ -399,6 +400,7 @@ async function detectFollowUps(userId: string): Promise<number> {
               threadStatus: latestEmail.chosenAction === "reply"
                 ? "awaiting_their_reply"
                 : "dormant",
+              dismissedGmailThreadId: null,
             })
             .where(eq(networkContacts.id, contact.id));
           continue;
@@ -420,6 +422,7 @@ async function detectFollowUps(userId: string): Promise<number> {
                 .set({
                   lastDirection: "sent",
                   threadStatus: "awaiting_their_reply",
+                  dismissedGmailThreadId: null,
                 })
                 .where(eq(networkContacts.id, contact.id));
               console.log(

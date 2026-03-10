@@ -324,16 +324,26 @@ networkRoutes.post("/follow-ups/:id/action", async (c) => {
       .where(eq(followUpQueue.id, id));
 
     // When dismissing, mark the contact's thread as "conversation_ended"
-    // so no new follow-ups are generated until a new thread starts
+    // and record which thread was dismissed so the classifier won't re-flag it
     if (newStatus === "dismissed") {
       const followUp = await db.query.followUpQueue.findFirst({
         where: eq(followUpQueue.id, id),
         columns: { networkContactId: true },
       });
       if (followUp) {
+        const contact = await db.query.networkContacts.findFirst({
+          where: and(
+            eq(networkContacts.id, followUp.networkContactId),
+            eq(networkContacts.userId, user.sub),
+          ),
+          columns: { gmailThreadId: true },
+        });
         await db
           .update(networkContacts)
-          .set({ threadStatus: "conversation_ended" })
+          .set({
+            threadStatus: "conversation_ended",
+            dismissedGmailThreadId: contact?.gmailThreadId ?? null,
+          })
           .where(
             and(
               eq(networkContacts.id, followUp.networkContactId),

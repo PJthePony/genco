@@ -1,7 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { api } from './useApi'
 
-const POLL_INTERVAL_MS = 60 * 1000 // 1 minute
+const POLL_INTERVAL_MS = 15 * 60 * 1000 // 15 minutes
 const FAVICON_DEFAULT = '/favicon.svg'
 const FAVICON_UNREAD = '/favicon-unread.svg'
 
@@ -92,10 +92,18 @@ function stopPolling() {
   pollActive = false
 }
 
+/**
+ * Re-fetch the count from the server immediately (e.g. after taking an action).
+ */
+function refreshCount() {
+  pollCount()
+}
+
 export function useUnread() {
   return {
     unreadCount,
     markSeen,
+    refreshCount,
     startPolling,
     stopPolling,
   }

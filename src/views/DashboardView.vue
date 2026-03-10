@@ -21,7 +21,7 @@ const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback }
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, overrideAction, generateDraft: generateReplyDraft } = useGroupedQueue()
 const { items: digestItems, fetchDigest, promoteItem } = useDigest()
 const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
-const { markSeen, startPolling, stopPolling } = useUnread()
+const { markSeen, refreshCount, startPolling, stopPolling } = useUnread()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
@@ -48,6 +48,7 @@ const networkModalOpen = ref(false)
 async function handleFollowUpSnooze(id, days) {
   try {
     await actOnFollowUp(id, 'snooze', days)
+    refreshCount()
     showToast('Snoozed')
   } catch (err) {
     showToast('Snooze failed')
@@ -57,6 +58,7 @@ async function handleFollowUpSnooze(id, days) {
 async function handleFollowUpDismiss(id) {
   try {
     await actOnFollowUp(id, 'dismiss')
+    refreshCount()
     showToast('Dismissed')
   } catch (err) {
     showToast('Dismiss failed')
@@ -66,6 +68,7 @@ async function handleFollowUpDismiss(id) {
 async function handleFollowUpNoise(id) {
   try {
     await actOnFollowUp(id, 'noise')
+    refreshCount()
     showToast('Blocked — sender removed from network')
   } catch (err) {
     showToast('Block failed')
@@ -83,6 +86,7 @@ async function handleFollowUpDraft(id) {
 async function handleSaveDraft(id, body) {
   try {
     await saveDraftToGmail(id, body)
+    refreshCount()
     showToast('Draft saved to Gmail')
   } catch (err) {
     showToast('Failed to save draft')
@@ -92,6 +96,7 @@ async function handleSaveDraft(id, body) {
 async function handleSendMessage(id, body) {
   try {
     await sendFollowUpAsMessage(id, body)
+    refreshCount()
     showToast('Message queued for sending')
   } catch (err) {
     showToast('Failed to queue message')
@@ -279,6 +284,8 @@ async function approveCard(cardId, message, extra = {}) {
     }
   } catch (err) {
     showToast(err.message || 'Action failed — try again')
+  } finally {
+    refreshCount()
   }
 }
 
@@ -290,6 +297,8 @@ async function skipCard(cardId) {
     showToast('Skipped')
   } catch (err) {
     showToast('Skip failed')
+  } finally {
+    refreshCount()
   }
 }
 

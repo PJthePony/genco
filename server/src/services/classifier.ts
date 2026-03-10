@@ -324,10 +324,28 @@ export async function classifyPendingEmails(
         const contactId = networkContactMap.get(email.fromEmail.toLowerCase());
         if (contactId) {
           try {
-            await db
-              .update(networkContacts)
-              .set({ threadStatus: "awaiting_your_reply" })
-              .where(eq(networkContacts.id, contactId));
+            // Don't re-flag a thread that was explicitly dismissed.
+            // If the dismissed thread matches this email's thread, skip.
+            // If it's a NEW thread, clear the dismissal and allow the update.
+            const contact = await db.query.networkContacts.findFirst({
+              where: eq(networkContacts.id, contactId),
+              columns: { threadStatus: true, dismissedGmailThreadId: true },
+            });
+
+            if (
+              contact?.threadStatus === "conversation_ended" &&
+              contact?.dismissedGmailThreadId === email.gmailThreadId
+            ) {
+              // Same thread was dismissed — don't re-flag
+            } else {
+              await db
+                .update(networkContacts)
+                .set({
+                  threadStatus: "awaiting_your_reply",
+                  dismissedGmailThreadId: null,
+                })
+                .where(eq(networkContacts.id, contactId));
+            }
           } catch (err) {
             console.warn(
               `Failed to update threadStatus for ${email.fromEmail}:`,

@@ -198,6 +198,7 @@ export const networkContacts = pgTable(
     lastDirection: text("last_direction"), // "sent" | "received"
     threadStatus: text("thread_status"), // "awaiting_their_reply" | "awaiting_your_reply" | "dormant" | "conversation_ended"
     gmailThreadId: text("gmail_thread_id"),
+    dismissedGmailThreadId: text("dismissed_gmail_thread_id"),
     lastSubject: text("last_subject"),
     phoneNumber: text("phone_number"),
     addedAt: timestamp("added_at", { withTimezone: true })

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { eq, and, desc, isNotNull, gte, or, inArray, count } from "drizzle-orm";
+import { eq, and, desc, isNotNull, gte, or, inArray, count, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { emailQueue, gmailConnections, networkContacts } from "../db/schema.js";
+import { emailQueue, gmailConnections, networkContacts, followUpQueue } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
 import { archiveMessage, unarchiveMessage, refreshAccessToken, type GoogleTokens } from "../lib/gmail.js";
@@ -72,10 +72,12 @@ queueRoutes.get("/", async (c) => {
 });
 
 // GET /queue/count — lightweight count of actionable items (for polling/badge)
+// Counts pending action items + pending/due follow-ups
 queueRoutes.get("/count", async (c) => {
   const user = c.get("user");
 
-  const [result] = await db
+  // Count pending action items (emails needing decisions)
+  const [actionResult] = await db
     .select({ count: count() })
     .from(emailQueue)
     .where(
@@ -86,7 +88,37 @@ queueRoutes.get("/count", async (c) => {
       ),
     );
 
-  return c.json({ count: result?.count ?? 0 });
+  // Count pending + due snoozed follow-ups
+  const now = new Date();
+  const contacts = await db.query.networkContacts.findMany({
+    where: eq(networkContacts.userId, user.sub),
+    columns: { id: true },
+  });
+  let followUpCount = 0;
+  if (contacts.length > 0) {
+    const contactIds = contacts.map((c) => c.id);
+    const [fuResult] = await db
+      .select({ count: count() })
+      .from(followUpQueue)
+      .where(
+        and(
+          sql`${followUpQueue.networkContactId} IN (${sql.join(
+            contactIds.map((id) => sql`${id}::uuid`),
+            sql`, `,
+          )})`,
+          or(
+            eq(followUpQueue.status, "pending"),
+            and(
+              eq(followUpQueue.status, "snoozed"),
+              lte(followUpQueue.snoozedUntil, now),
+            ),
+          ),
+        ),
+      );
+    followUpCount = fuResult?.count ?? 0;
+  }
+
+  return c.json({ count: (actionResult?.count ?? 0) + followUpCount });
 });
 
 // GET /queue/digest — briefing source items for daily digest

@@ -1,0 +1,1 @@
+ALTER TABLE "network_contacts" ADD COLUMN "dismissed_gmail_thread_id" text;
