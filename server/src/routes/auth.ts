@@ -66,10 +66,10 @@ authRoutes.get("/google/callback", async (c) => {
 
     console.log(`Gmail connected for user ${userId}: ${gmailAddress}`);
 
-    // Redirect back to the Genco frontend settings
-    return c.redirect(`${env.FRONTEND_URL}/settings?gmail=connected`);
+    // Redirect back to the Genco frontend dashboard
+    return c.redirect(`${env.FRONTEND_URL}/dashboard?gmail=connected`);
   } catch (err: any) {
     console.error("Google OAuth callback failed:", err);
-    return c.redirect(`${env.FRONTEND_URL}/settings?gmail=error`);
+    return c.redirect(`${env.FRONTEND_URL}/dashboard?gmail=error`);
   }
 });

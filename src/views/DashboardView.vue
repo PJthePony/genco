@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useFeedback } from '../composables/useFeedback'
 import { useGroupedQueue } from '../composables/useGroupedQueue'
@@ -16,6 +17,8 @@ import SettingsModal from '../components/SettingsModal.vue'
 import NetworkModal from '../components/NetworkModal.vue'
 import ToastNotification from '../components/ToastNotification.vue'
 
+const route = useRoute()
+const router = useRouter()
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, overrideAction, generateDraft: generateReplyDraft } = useGroupedQueue()
@@ -443,6 +446,16 @@ onMounted(async () => {
   document.addEventListener('touchstart', onTouchStart, { passive: true })
   document.addEventListener('touchmove', onTouchMove, { passive: true })
   document.addEventListener('touchend', onTouchEnd)
+
+  // Handle Gmail OAuth redirect
+  if (route.query.gmail === 'connected') {
+    settingsOpen.value = true
+    showToast('Gmail connected')
+    router.replace({ query: {} })
+  } else if (route.query.gmail === 'error') {
+    showToast('Gmail connection failed')
+    router.replace({ query: {} })
+  }
 
   await fetchQueue()
   markSeen()
