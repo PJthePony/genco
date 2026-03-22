@@ -353,30 +353,34 @@ async function handleBulkApprove(sectionKey) {
     total: cardsToApprove.length,
   }
 
-  const promises = cardsToApprove.map(async (card) => {
-    try {
-      if (card.actionKey === 'act' && card.subActionKey) {
-        await executeAction(card.id, 'act', {
-          subAction: card.subActionKey,
-          taskTitle: card.taskTitle,
-        })
-      } else if (card.actionKey === 'act') {
-        // act without sub-action — skip this card in bulk
-        return
-      } else {
-        await executeAction(card.id, card.actionKey, {
-          taskTitle: card.taskTitle,
-        })
+  // Process in batches to avoid overwhelming Gmail API rate limits.
+  // Firing all requests at once causes many to fail silently.
+  const BATCH_SIZE = 5
+  for (let i = 0; i < cardsToApprove.length; i += BATCH_SIZE) {
+    const batch = cardsToApprove.slice(i, i + BATCH_SIZE)
+    await Promise.allSettled(batch.map(async (card) => {
+      try {
+        if (card.actionKey === 'act' && card.subActionKey) {
+          await executeAction(card.id, 'act', {
+            subAction: card.subActionKey,
+            taskTitle: card.taskTitle,
+          })
+        } else if (card.actionKey === 'act') {
+          // act without sub-action — skip this card in bulk
+          return
+        } else {
+          await executeAction(card.id, card.actionKey, {
+            taskTitle: card.taskTitle,
+          })
+        }
+        card.cleared = true
+      } catch (err) {
+        console.error(`Bulk action failed for ${card.id}:`, err)
+      } finally {
+        bulkProgress.value[sectionKey].completed++
       }
-      card.cleared = true
-    } catch (err) {
-      console.error(`Bulk action failed for ${card.id}:`, err)
-    } finally {
-      bulkProgress.value[sectionKey].completed++
-    }
-  })
-
-  await Promise.allSettled(promises)
+    }))
+  }
 
   const successCount = cardsToApprove.filter(c => c.cleared).length
   const failCount = cardsToApprove.length - successCount
