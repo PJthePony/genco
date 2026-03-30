@@ -16,6 +16,48 @@ import {
 import { generateReplyDraft } from "../lib/claude.js";
 import { createTessioTask } from "../lib/tessio.js";
 
+/**
+ * Extract document/sharing URLs from email body text.
+ * Matches Google Docs/Sheets/Slides/Drive, Dropbox, OneDrive, Notion,
+ * Figma, and other common sharing platforms.
+ */
+function extractDocumentLinks(bodyText: string): string[] {
+  const urlRegex = /https?:\/\/[^\s<>"')\]]+/g;
+  const matches = bodyText.match(urlRegex) ?? [];
+
+  const docPatterns = [
+    /docs\.google\.com/,
+    /sheets\.google\.com/,
+    /slides\.google\.com/,
+    /drive\.google\.com/,
+    /dropbox\.com/,
+    /onedrive\.live\.com/,
+    /sharepoint\.com/,
+    /notion\.so/,
+    /figma\.com/,
+    /canva\.com/,
+    /miro\.com/,
+    /airtable\.com/,
+    /loom\.com/,
+    /pitch\.com/,
+    /coda\.io/,
+    /box\.com\/s\//,
+  ];
+
+  const seen = new Set<string>();
+  const links: string[] = [];
+  for (const url of matches) {
+    // Clean trailing punctuation that got captured
+    const cleaned = url.replace(/[.,;:!?)>\]]+$/, "");
+    if (seen.has(cleaned)) continue;
+    if (docPatterns.some((p) => p.test(cleaned))) {
+      seen.add(cleaned);
+      links.push(cleaned);
+    }
+  }
+  return links;
+}
+
 export interface ActionResult {
   ok: boolean;
   draftId?: string;
@@ -143,7 +185,34 @@ export async function executeAction(
           case "add_task": {
             const title =
               payload?.taskTitle || email.aiTaskTitle || email.subject;
-            const notes = `From: ${email.fromName ?? email.fromEmail}\nSubject: ${email.subject}\n\n${email.aiSummary ?? ""}`.trim();
+
+            // Build task notes with links to source email and any shared documents
+            const notesParts: string[] = [
+              `From: ${email.fromName ?? email.fromEmail}`,
+              `Subject: ${email.subject}`,
+            ];
+
+            // Add a direct link to the Gmail thread/message
+            if (email.gmailThreadId) {
+              notesParts.push(
+                `Email: https://mail.google.com/mail/u/0/#inbox/${email.gmailThreadId}`,
+              );
+            }
+
+            if (email.aiSummary) {
+              notesParts.push("", email.aiSummary);
+            }
+
+            // Extract document/sharing links from the email body
+            const docLinks = extractDocumentLinks(email.bodyText ?? "");
+            if (docLinks.length > 0) {
+              notesParts.push("", "Links:");
+              for (const link of docLinks) {
+                notesParts.push(link);
+              }
+            }
+
+            const notes = notesParts.join("\n").trim();
             await createTessioTask(userId, title, notes);
             if (tokens) {
               await archiveMessage(tokens, email.gmailMessageId);
