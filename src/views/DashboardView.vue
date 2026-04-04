@@ -313,7 +313,10 @@ function handleOverride(entry) {
 // ── Scan (inbox + threads in one button) ──
 async function handleScan() {
   try {
-    await Promise.all([scanInbox(), scanThreads()])
+    // Run sequentially — both endpoints refresh Gmail tokens independently,
+    // and parallel refresh can race (one invalidates the other's token).
+    await scanInbox()
+    await scanThreads()
     markSeen()
     await fetchDigest()
     showToast('Scan complete')

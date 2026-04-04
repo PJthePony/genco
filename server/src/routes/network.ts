@@ -690,11 +690,26 @@ networkRoutes.post("/scan-threads", async (c) => {
     tokens.expiry_date &&
     tokens.expiry_date < Date.now() + 5 * 60 * 1000
   ) {
-    tokens = await refreshAccessToken(tokens);
-    await db
-      .update(gmailConnections)
-      .set({ googleTokens: tokens, updatedAt: new Date() })
-      .where(eq(gmailConnections.id, connection.id));
+    try {
+      tokens = await refreshAccessToken(tokens);
+      await db
+        .update(gmailConnections)
+        .set({ googleTokens: tokens, updatedAt: new Date() })
+        .where(eq(gmailConnections.id, connection.id));
+    } catch (err) {
+      // Token may have been refreshed by a concurrent request (e.g. /emails/scan).
+      // Re-read from DB to pick up the freshest tokens before giving up.
+      const refreshed = await db.query.gmailConnections.findFirst({
+        where: eq(gmailConnections.id, connection.id),
+      });
+      const updated = refreshed?.googleTokens as GoogleTokens | undefined;
+      if (updated?.expiry_date && updated.expiry_date > Date.now() + 60_000) {
+        tokens = updated;
+      } else {
+        console.error("scan-threads token refresh failed:", err);
+        return c.json({ error: "Gmail token refresh failed — reconnect required" }, 401);
+      }
+    }
   }
 
   const userEmail = connection.gmailAddress.toLowerCase();
