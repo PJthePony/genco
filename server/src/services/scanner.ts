@@ -47,7 +47,7 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
   const skipThreshold = new Date(Date.now() - RECENT_THRESHOLD_MS);
   const resetResult = await db
     .update(emailQueue)
-    .set({ status: "pending", processedAt: null })
+    .set({ status: "pending", processedAt: null, chosenAction: null, chosenSubAction: null })
     .where(
       and(
         eq(emailQueue.userId, userId),
@@ -83,7 +83,17 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
     }
   }
 
-  const isFirstScan = !connection.lastHistoryId;
+  // A "first scan" means the user has never scanned before (brand new setup).
+  // If the historyId was reset but we already have emails, this is a re-fetch
+  // and old inbox emails should be pending (not historical).
+  let isFirstScan = !connection.lastHistoryId;
+  if (isFirstScan) {
+    const [existing] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(emailQueue)
+      .where(eq(emailQueue.userId, userId));
+    if (existing.count > 0) isFirstScan = false;
+  }
 
   // Fetch emails
   const { emails, newHistoryId } = await fetchInboxEmails(
