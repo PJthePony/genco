@@ -98,7 +98,10 @@ function handlePromote(itemId) {
   transition: background var(--transition-fast);
 }
 
-.briefing-digest-header:hover { background: var(--color-bg); }
+.briefing-digest-header:hover,
+.briefing-digest-header:active {
+  background: rgba(212, 36, 111, 0.04);
+}
 
 .briefing-digest-left {
   display: flex;
@@ -119,16 +122,20 @@ function handlePromote(itemId) {
 }
 
 .briefing-digest-title {
-  font-size: 0.82rem;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
   font-weight: 600;
-  color: var(--color-text);
-  letter-spacing: -0.01em;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  font-variation-settings: 'opsz' 24, 'WONK' 0;
 }
 
 .briefing-digest-subtitle {
+  font-family: var(--font-sans);
   font-size: 0.7rem;
-  color: var(--color-text-muted);
-  margin-top: 1px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .briefing-digest-right {

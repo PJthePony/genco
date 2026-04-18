@@ -158,7 +158,10 @@ function handleSkip(cardId) {
   transition: background var(--transition-fast);
 }
 
-.section-header:hover { background: var(--color-bg); }
+.section-header:hover,
+.section-header:active {
+  background: rgba(212, 36, 111, 0.04);
+}
 
 .section-header-left {
   display: flex;
