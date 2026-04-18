@@ -608,29 +608,36 @@ onUnmounted(() => {
 }
 
 .briefing-header {
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .briefing-date {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 4px;
+  letter-spacing: 0.2em;
+  margin-bottom: 6px;
+  font-feature-settings: "c2sc", "smcp";
 }
 
 .briefing-title {
-  font-size: 1.5rem;
+  font-family: var(--font-serif);
+  font-size: var(--step-5);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 2px;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-variation-settings: 'opsz' 96, 'WONK' 1;
+  text-wrap: balance;
+  color: var(--text);
+  margin: 0;
 }
 
 .briefing-stats {
   display: flex;
   gap: 16px;
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .briefing-stat {
