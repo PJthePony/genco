@@ -507,11 +507,6 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Loading state — overlaid so it doesn't shift sections -->
-      <div v-if="loading && cards.length === 0" class="loading-overlay">
-        <p>Pulling the briefing together…</p>
-      </div>
-
       <!-- Error state -->
       <div v-if="error && cards.length === 0" class="error-state">
         <p>{{ error }}</p>
@@ -703,16 +698,6 @@ onUnmounted(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.loading-overlay {
-  text-align: center;
-  padding: 16px 20px;
-  color: var(--text-muted);
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 0.95rem;
-  font-variation-settings: 'opsz' 36, 'WONK' 1;
 }
 
 .error-state {
