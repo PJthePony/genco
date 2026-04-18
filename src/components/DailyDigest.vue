@@ -43,7 +43,7 @@ function handlePromote(itemId) {
     </div>
     <div class="briefing-digest-body">
       <div v-if="items.length === 0" class="briefing-digest-empty">
-        Nothing here right now.
+        No briefing yet. Check back after the next scan.
       </div>
       <template v-else>
         <div class="briefing-digest-items">
@@ -312,11 +312,15 @@ function handlePromote(itemId) {
 .briefing-footer-action:hover { color: var(--color-text-secondary); background: var(--color-bg); }
 
 .briefing-digest-empty {
-  padding: 20px 18px;
+  padding: 24px 18px;
   text-align: center;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  border-top: 1px solid var(--color-border);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  font-variation-settings: 'opsz' 36, 'WONK' 1;
 }
 
 @media (max-width: 768px) {

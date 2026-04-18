@@ -319,7 +319,7 @@ async function submitFact() {
 
           <!-- Contact list -->
           <div v-if="contacts.length === 0 && !loading && !contactSearch" class="empty-contacts">
-            <p>No contacts yet. Add people you want to stay in touch with.</p>
+            <p>The guest list is empty. Add someone you want to stay close with.</p>
           </div>
 
           <div v-if="contactSearch && filteredContacts.length === 0 && contactSearchSuggestions.length === 0 && suggestions.length > 0" class="empty-contacts">
@@ -479,11 +479,7 @@ async function submitFact() {
   border-bottom: 1px solid var(--color-border);
 }
 
-.modal-header h2 {
-  font-size: 0.92rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
+/* .modal-header h2 inherits global h2 (Fraunces 1.4rem) */
 
 .btn-close {
   background: none;
@@ -745,8 +741,12 @@ async function submitFact() {
 .empty-contacts {
   text-align: center;
   padding: 30px 10px;
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 1rem;
+  line-height: 1.4;
+  font-variation-settings: 'opsz' 36, 'WONK' 1;
 }
 
 .contact-row {

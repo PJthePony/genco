@@ -237,8 +237,32 @@ h1 {
   margin: 0;
 }
 
+h2 {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variation-settings: 'opsz' 48, 'WONK' 1;
+  color: var(--text);
+  text-wrap: balance;
+  margin: 0;
+}
+
+h3 {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  font-variation-settings: 'opsz' 24, 'WONK' 0;
+  color: var(--text);
+  margin: 0;
+}
+
 @media (max-width: 768px) {
   h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.2rem; }
 }
 
 /* ── Selection ── */

@@ -94,7 +94,7 @@ function handleNoise(id) {
         />
       </template>
       <div v-else class="empty-state">
-        <p>No follow-ups right now. Use the Scan button above to find threads needing attention.</p>
+        <p>Everyone's been answered. Run a scan to look for new threads.</p>
       </div>
     </div>
   </div>
@@ -144,16 +144,20 @@ function handleNoise(id) {
 }
 
 .section-label {
-  font-size: 0.82rem;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
   font-weight: 600;
-  color: var(--color-text);
-  letter-spacing: -0.01em;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  font-variation-settings: 'opsz' 24, 'WONK' 0;
 }
 
 .section-sublabel {
+  font-family: var(--font-sans);
   font-size: 0.7rem;
-  color: var(--color-text-muted);
-  margin-top: 1px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .section-header-right {
@@ -196,10 +200,13 @@ function handleNoise(id) {
 }
 
 .empty-state p {
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
-  line-height: 1.5;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.4;
   margin: 0 0 12px;
+  font-variation-settings: 'opsz' 36, 'WONK' 1;
 }
 
 .scan-progress {

@@ -482,8 +482,12 @@ onUnmounted(() => {
 
 <template>
   <div class="app-container">
-    <!-- Pull-to-refresh indicator -->
-    <div class="pull-indicator" :style="{ transform: `translateY(${pullDistance}px)`, opacity: pullDistance > 10 ? 1 : 0 }">
+    <!-- Pull-to-refresh indicator — a floating pill that descends from below the header -->
+    <div
+      class="pull-indicator"
+      :class="{ refreshing }"
+      :style="{ transform: `translateX(-50%) translateY(${pullDistance}px)`, opacity: pullDistance > 10 || refreshing ? 1 : 0 }"
+    >
       <span class="pull-spinner" :class="{ active: refreshing }"></span>
       <span class="pull-text">{{ refreshing ? 'Refreshing…' : 'Pull to refresh' }}</span>
     </div>
@@ -511,7 +515,7 @@ onUnmounted(() => {
 
       <!-- Loading state — overlaid so it doesn't shift sections -->
       <div v-if="loading && cards.length === 0" class="loading-overlay">
-        <p>Loading your queue…</p>
+        <p>Pulling the briefing together…</p>
       </div>
 
       <!-- Error state -->
@@ -624,25 +628,36 @@ onUnmounted(() => {
 
 .briefing-stats {
   display: flex;
-  gap: 16px;
-  margin-top: 16px;
+  gap: 20px;
+  margin-top: 18px;
+  align-items: baseline;
 }
 
 .briefing-stat {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
-  font-size: 0.78rem;
-  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-feature-settings: "c2sc", "smcp";
+  color: var(--text-muted);
 }
 
 .briefing-stat strong {
+  font-family: var(--font-serif);
   font-weight: 600;
-  color: var(--color-text);
+  font-size: 1.1rem;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  font-variation-settings: 'opsz' 24, 'WONK' 1;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .briefing-stat.urgent strong {
-  color: var(--color-accent);
+  color: var(--accent);
 }
 
 .action-buttons {
@@ -698,9 +713,12 @@ onUnmounted(() => {
 
 .loading-overlay {
   text-align: center;
-  padding: 12px 20px;
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
+  padding: 16px 20px;
+  color: var(--text-muted);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.95rem;
+  font-variation-settings: 'opsz' 36, 'WONK' 1;
 }
 
 .error-state {
@@ -731,27 +749,35 @@ onUnmounted(() => {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Pull-to-refresh ── */
+/* ── Pull-to-refresh — a floating pill below the sticky header ── */
 .pull-indicator {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
+  top: 76px;
+  left: 50%;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  padding: 12px;
-  z-index: 100;
-  transition: opacity 0.2s ease;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-hang-sm);
+  z-index: 40;
+  transition: opacity var(--dur-2) var(--ease-out-expo);
   pointer-events: none;
+  white-space: nowrap;
+}
+
+.pull-indicator.refreshing {
+  border-color: rgba(212, 36, 111, 0.22);
+  box-shadow: var(--shadow-hang-md);
 }
 
 .pull-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-accent);
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
   border-radius: 50%;
 }
 
@@ -760,9 +786,15 @@ onUnmounted(() => {
 }
 
 .pull-text {
+  font-family: var(--font-sans);
   font-size: 0.72rem;
-  color: var(--color-text-muted);
-  font-weight: 500;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+@media (max-width: 768px) {
+  .pull-indicator { top: 84px; }
 }
 
 .app-body {

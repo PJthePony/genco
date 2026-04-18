@@ -338,11 +338,7 @@ function timeAgo(timestamp) {
   border-radius: 14px 14px 0 0;
 }
 
-.settings-header h2 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
+/* .settings-header h2 inherits global h2 (Fraunces 1.4rem) */
 
 .modal-close {
   width: 44px;

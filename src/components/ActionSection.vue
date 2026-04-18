@@ -111,7 +111,7 @@ function handleSkip(cardId) {
     <!-- Card list -->
     <div v-if="expanded" class="section-body">
       <div v-if="section.count === 0" class="section-empty">
-        Nothing here right now.
+        The family is quiet. Nothing on the docket.
       </div>
       <template v-for="card in section.cards" :key="card.id">
         <div v-if="expandedCardId === card.id" class="expanded-card-wrapper">
@@ -187,16 +187,20 @@ function handleSkip(cardId) {
 }
 
 .section-label {
-  font-size: 0.82rem;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
   font-weight: 600;
-  color: var(--color-text);
-  letter-spacing: -0.01em;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  font-variation-settings: 'opsz' 24, 'WONK' 0;
 }
 
 .section-sublabel {
+  font-family: var(--font-sans);
   font-size: 0.7rem;
-  color: var(--color-text-muted);
-  margin-top: 1px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .section-header-right {
@@ -302,10 +306,14 @@ function handleSkip(cardId) {
 .btn-collapse:hover { color: var(--color-text-secondary); }
 
 .section-empty {
-  padding: 20px 0;
+  padding: 24px 0;
   text-align: center;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-variation-settings: 'opsz' 36, 'WONK' 1;
 }
 
 @media (max-width: 768px) {

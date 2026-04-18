@@ -75,11 +75,13 @@ defineEmits(['close'])
 }
 
 .modal-subject {
-  font-size: 1rem;
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+  font-variation-settings: 'opsz' 36, 'WONK' 0;
   flex: 1;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 
 .modal-close {
