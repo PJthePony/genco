@@ -292,11 +292,13 @@ function cancelDraft() {
 }
 
 .type-badge {
-  font-size: 0.55rem;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 100px;
-  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
 .type-message {
@@ -356,10 +358,13 @@ function cancelDraft() {
 }
 
 .rec-label {
-  font-size: 0.65rem;
-  color: var(--color-text-muted);
-  letter-spacing: 0.04em;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.2em;
   text-transform: uppercase;
+  font-feature-settings: "c2sc", "smcp";
   margin-bottom: 8px;
   display: flex;
   align-items: center;
@@ -378,12 +383,12 @@ function cancelDraft() {
   padding: 8px 18px;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: all var(--transition-fast);
   border: none;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -449,11 +454,13 @@ function cancelDraft() {
 }
 
 .review-label {
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
+  font-feature-settings: "c2sc", "smcp";
   margin-bottom: 8px;
 }
 
@@ -500,9 +507,10 @@ function cancelDraft() {
   padding: 8px 18px;
   border-radius: var(--radius-md);
   font-size: 0.78rem;
-  font-weight: 500;
+  font-weight: 600;
   font-family: inherit;
   border: none;
+  letter-spacing: -0.005em;
   background: var(--color-success);
   color: #fff;
   cursor: pointer;

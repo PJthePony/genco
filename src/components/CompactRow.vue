@@ -139,12 +139,13 @@ function truncate(text, max) {
 }
 
 .compact-tag {
-  font-size: 0.55rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 100px;
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.1em;
   white-space: nowrap;
 }
 

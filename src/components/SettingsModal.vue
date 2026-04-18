@@ -372,11 +372,13 @@ function timeAgo(timestamp) {
 .settings-group:last-child { margin-bottom: 0; }
 
 .settings-label {
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.2em;
+  font-feature-settings: "c2sc", "smcp";
   margin-bottom: 10px;
   display: flex;
   align-items: center;
@@ -638,11 +640,13 @@ function timeAgo(timestamp) {
 }
 
 .recent-label {
+  font-family: var(--font-sans);
   font-size: 0.68rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
+  font-weight: 700;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.2em;
+  font-feature-settings: "c2sc", "smcp";
   margin-bottom: 6px;
 }
 

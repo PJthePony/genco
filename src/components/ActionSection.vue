@@ -258,7 +258,8 @@ function handleSkip(cardId) {
   padding: 8px 18px;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   font-family: inherit;
   border: none;
   background: var(--color-primary);

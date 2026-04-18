@@ -493,7 +493,7 @@ onUnmounted(() => {
     <div class="app-body" :style="{ transform: `translateY(${pullDistance}px)` }"  >
       <div class="briefing-header">
         <div class="briefing-date">{{ dateStr }}</div>
-        <h1 class="briefing-title">The Sit-Down</h1>
+        <h1>The Sit-Down</h1>
         <div class="briefing-stats">
           <div class="briefing-stat"><strong>{{ remaining }}</strong> to review</div>
           <div v-if="urgentCount > 0" class="briefing-stat urgent"><strong>{{ urgentCount }}</strong> urgent</div>
@@ -622,18 +622,6 @@ onUnmounted(() => {
   font-feature-settings: "c2sc", "smcp";
 }
 
-.briefing-title {
-  font-family: var(--font-serif);
-  font-size: var(--step-5);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.035em;
-  font-variation-settings: 'opsz' 96, 'WONK' 1;
-  text-wrap: balance;
-  color: var(--text);
-  margin: 0;
-}
-
 .briefing-stats {
   display: flex;
   gap: 16px;
@@ -670,8 +658,9 @@ onUnmounted(() => {
   padding: 8px 18px;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   font-family: inherit;
+  letter-spacing: -0.005em;
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-primary);
@@ -726,8 +715,9 @@ onUnmounted(() => {
   padding: 8px 18px;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   font-family: inherit;
+  letter-spacing: -0.005em;
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-primary);

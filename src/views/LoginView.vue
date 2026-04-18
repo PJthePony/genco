@@ -169,6 +169,7 @@ const handleSubmit = async () => {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  font-feature-settings: "c2sc", "smcp";
   color: var(--text-muted);
   margin-bottom: 8px;
 }

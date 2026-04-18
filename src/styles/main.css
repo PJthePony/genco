@@ -224,6 +224,23 @@ body {
 
 #app { min-height: 100vh; }
 
+/* ── Editorial type defaults ── */
+h1 {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  font-variation-settings: 'opsz' 48, 'WONK' 1;
+  color: var(--text);
+  text-wrap: balance;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  h1 { font-size: 1.6rem; }
+}
+
 /* ── Selection ── */
 ::selection {
   background: var(--fuchsia-100);

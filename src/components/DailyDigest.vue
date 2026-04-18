@@ -208,12 +208,13 @@ function handlePromote(itemId) {
 }
 
 .briefing-item-tag {
-  font-size: 0.58rem;
-  font-weight: 500;
-  padding: 1px 6px;
-  border-radius: 100px;
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
   flex-shrink: 0;
 }
 

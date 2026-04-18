@@ -251,12 +251,13 @@ defineExpose({ onDraftReady })
 }
 
 .compact-tag {
-  font-size: 0.55rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 100px;
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.1em;
   white-space: nowrap;
 }
 
@@ -350,7 +351,8 @@ defineExpose({ onDraftReady })
   padding: 8px 18px;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   font-family: inherit;
   border: 1px solid var(--color-border);
   background: transparent;

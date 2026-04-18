@@ -592,11 +592,13 @@ async function submitFact() {
 }
 
 .search-suggestions-label {
-  font-size: 0.6rem;
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
+  letter-spacing: 0.2em;
+  font-feature-settings: "c2sc", "smcp";
+  color: var(--text-muted);
   margin-bottom: 6px;
 }
 
