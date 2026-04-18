@@ -108,6 +108,11 @@ function handleNoise(id) {
   margin-bottom: 10px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+  transition: border-color var(--dur-2) var(--ease-out-expo);
+}
+
+.action-section:has(.section-header:hover) {
+  border-color: var(--accent);
 }
 
 .section-header {
@@ -120,10 +125,7 @@ function handleNoise(id) {
   transition: background var(--transition-fast);
 }
 
-.section-header:hover,
-.section-header:active {
-  background: rgba(212, 36, 111, 0.04);
-}
+/* section outline highlights via .action-section:has(.section-header:hover) */
 
 .section-header-left {
   display: flex;

@@ -435,13 +435,12 @@ async function onTouchEnd() {
   pulling.value = false
 
   if (pullDistance.value > 50) {
+    pullDistance.value = 0 // snap back; the scan button shows "Loading"
     refreshing.value = true
-    pullDistance.value = 40 // hold at spinner position
     try {
       await handleScan()
     } finally {
       refreshing.value = false
-      pullDistance.value = 0
     }
   } else {
     pullDistance.value = 0
@@ -482,16 +481,6 @@ onUnmounted(() => {
 
 <template>
   <div class="app-container">
-    <!-- Pull-to-refresh indicator — a floating pill that descends from below the header -->
-    <div
-      class="pull-indicator"
-      :class="{ refreshing }"
-      :style="{ transform: `translateX(-50%) translateY(${pullDistance}px)`, opacity: pullDistance > 10 || refreshing ? 1 : 0 }"
-    >
-      <span class="pull-spinner" :class="{ active: refreshing }"></span>
-      <span class="pull-text">{{ refreshing ? 'Refreshing…' : 'Pull to refresh' }}</span>
-    </div>
-
     <AppHeader @open-settings="settingsOpen = true" @logout="handleLogout" />
 
     <div class="app-body" :style="{ transform: `translateY(${pullDistance}px)` }"  >
@@ -506,10 +495,15 @@ onUnmounted(() => {
 
       <!-- Action buttons -->
       <div class="action-buttons">
-        <button class="btn-scan" :class="{ scanning }" @click="handleScan" :disabled="scanning">
-          <svg v-if="!scanning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          <span v-if="scanning" class="scan-spinner"></span>
-          {{ scanning ? 'Scanning…' : 'Scan' }}
+        <button
+          class="btn-scan"
+          :class="{ scanning: scanning || refreshing }"
+          @click="handleScan"
+          :disabled="scanning || refreshing"
+        >
+          <svg v-if="!scanning && !refreshing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <span v-if="scanning || refreshing" class="scan-spinner"></span>
+          {{ refreshing ? 'Loading' : (scanning ? 'Scanning…' : 'Scan') }}
         </button>
       </div>
 
@@ -749,54 +743,8 @@ onUnmounted(() => {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Pull-to-refresh — a floating pill below the sticky header ── */
-.pull-indicator {
-  position: fixed;
-  top: 76px;
-  left: 50%;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-hang-sm);
-  z-index: 40;
-  transition: opacity var(--dur-2) var(--ease-out-expo);
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.pull-indicator.refreshing {
-  border-color: rgba(212, 36, 111, 0.22);
-  box-shadow: var(--shadow-hang-md);
-}
-
-.pull-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-}
-
-.pull-spinner.active {
-  animation: spin 0.6s linear infinite;
-}
-
-.pull-text {
-  font-family: var(--font-sans);
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  font-weight: 600;
-  letter-spacing: -0.005em;
-}
-
-@media (max-width: 768px) {
-  .pull-indicator { top: 84px; }
-}
-
+/* Pull-to-refresh: body translates down on pull for tactile feedback;
+   when released past threshold, the scan button takes over with "Loading". */
 .app-body {
   transition: transform 0.1s ease-out;
 }

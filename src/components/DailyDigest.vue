@@ -86,6 +86,11 @@ function handlePromote(itemId) {
   margin-bottom: 10px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+  transition: border-color var(--dur-2) var(--ease-out-expo);
+}
+
+.briefing-digest:has(.briefing-digest-header:hover) {
+  border-color: var(--accent);
 }
 
 .briefing-digest-header {
@@ -98,10 +103,7 @@ function handlePromote(itemId) {
   transition: background var(--transition-fast);
 }
 
-.briefing-digest-header:hover,
-.briefing-digest-header:active {
-  background: rgba(212, 36, 111, 0.04);
-}
+/* digest outline highlights via .briefing-digest:has(.briefing-digest-header:hover) */
 
 .briefing-digest-left {
   display: flex;
