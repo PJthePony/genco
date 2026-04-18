@@ -190,7 +190,7 @@ defineExpose({ onDraftReady })
 .av-blue { background: var(--color-blue-soft); color: var(--color-blue); }
 .av-purple { background: var(--color-purple-soft); color: var(--color-purple); }
 .av-green { background: var(--color-success-soft); color: var(--color-success); }
-.av-red { background: rgba(239, 68, 68, 0.08); color: var(--color-danger); }
+.av-red { background: var(--color-danger-soft); color: var(--color-danger); }
 
 .compact-content {
   flex: 1;
@@ -490,12 +490,12 @@ defineExpose({ onDraftReady })
   font-weight: 600;
   font-family: inherit;
   border: none;
-  background: #34C759;
+  background: var(--color-success);
   color: #fff;
   cursor: pointer;
 }
 
-.btn-draft-imessage:hover:not(:disabled) { background: #2db84e; }
+.btn-draft-imessage:hover:not(:disabled) { background: var(--teal-800); }
 .btn-draft-imessage:disabled { opacity: 0.4; cursor: default; }
 
 .btn-draft-cancel {
@@ -520,8 +520,8 @@ defineExpose({ onDraftReady })
 }
 .btn-noise:hover {
   opacity: 1;
-  color: #ef4444;
-  border-color: #ef444433;
+  color: var(--color-danger);
+  border-color: rgba(168, 58, 74, 0.25);
 }
 
 @media (max-width: 768px) {

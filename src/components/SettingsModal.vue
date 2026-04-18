@@ -297,8 +297,9 @@ function timeAgo(timestamp) {
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(4px);
+  background: rgba(20, 34, 53, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 400;
   display: none;
   align-items: center;
@@ -472,7 +473,7 @@ function timeAgo(timestamp) {
 .settings-remove:hover {
   border-color: var(--color-danger);
   color: var(--color-danger);
-  background: rgba(239, 68, 68, 0.06);
+  background: var(--color-danger-soft);
 }
 
 .add-row {

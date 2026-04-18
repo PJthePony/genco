@@ -78,7 +78,7 @@ function truncate(text, max) {
 .av-blue { background: var(--color-blue-soft); color: var(--color-blue); }
 .av-purple { background: var(--color-purple-soft); color: var(--color-purple); }
 .av-green { background: var(--color-success-soft); color: var(--color-success); }
-.av-red { background: rgba(239, 68, 68, 0.08); color: var(--color-danger); }
+.av-red { background: var(--color-danger-soft); color: var(--color-danger); }
 
 .compact-content {
   flex: 1;
@@ -160,8 +160,8 @@ function truncate(text, max) {
   font-weight: 600;
   padding: 1px 4px;
   border-radius: 100px;
-  color: #34C759;
-  background: rgba(52, 199, 89, 0.1);
+  color: var(--color-success);
+  background: var(--color-success-soft);
   vertical-align: 1px;
   margin-right: 3px;
 }

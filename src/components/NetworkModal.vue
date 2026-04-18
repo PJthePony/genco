@@ -450,7 +450,9 @@ async function submitFact() {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(20, 34, 53, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -769,11 +771,11 @@ async function submitFact() {
   color: #fff;
 }
 
-.avatar.av-orange { background: #f97316; }
-.avatar.av-blue { background: #3b82f6; }
-.avatar.av-purple { background: #8b5cf6; }
-.avatar.av-green { background: #059669; }
-.avatar.av-red { background: #ef4444; }
+.avatar.av-orange { background: var(--color-accent); }
+.avatar.av-blue { background: var(--color-blue); }
+.avatar.av-purple { background: var(--color-purple); }
+.avatar.av-green { background: var(--color-success); }
+.avatar.av-red { background: var(--color-danger); }
 
 .avatar-sm { width: 28px; height: 28px; font-size: 0.58rem; }
 
@@ -797,7 +799,7 @@ async function submitFact() {
 }
 
 .contact-phone {
-  color: #34C759;
+  color: var(--color-success);
 }
 
 .contact-last {

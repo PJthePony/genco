@@ -5,8 +5,8 @@ defineEmits(['open-settings', 'logout'])
 <template>
   <header class="app-header">
     <div class="header-left">
-      <div class="header-icon">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <div class="header-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
       </div>
       <span class="app-name">Genco</span>
     </div>
@@ -23,9 +23,9 @@ defineEmits(['open-settings', 'logout'])
 
 <style scoped>
 .app-header {
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-border);
-  padding: 16px 24px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -43,60 +43,57 @@ defineEmits(['open-settings', 'logout'])
 .header-icon {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: var(--color-accent-soft, rgba(249, 115, 22, 0.08));
-  border: 1px solid var(--color-accent-border, rgba(249, 115, 22, 0.15));
+  border-radius: var(--radius-lg);
+  background: rgba(212, 36, 111, 0.08);
+  border: 1px solid rgba(212, 36, 111, 0.18);
+  color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .app-name {
-  font-size: 0.95rem;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: var(--color-text);
+  font-variation-settings: 'opsz' 24;
+  color: var(--text);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
 .header-btn {
   width: 34px;
   height: 34px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text-secondary);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: background var(--dur-2) var(--ease-out-expo),
+              color var(--dur-2) var(--ease-out-expo),
+              border-color var(--dur-2) var(--ease-out-expo);
   -webkit-tap-highlight-color: transparent;
 }
 
 .header-btn:hover,
 .header-btn:active {
-  background: var(--color-surface);
-  color: var(--color-text);
+  background: var(--bg-card);
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 @media (max-width: 768px) {
-  .app-header {
-    padding: 12px 16px;
-  }
-
-  .header-right {
-    gap: 8px;
-  }
-
-  .header-btn {
-    width: 44px;
-    height: 44px;
-  }
+  .app-header { padding: 12px 16px; }
+  .header-right { gap: 8px; }
+  .header-btn { width: 44px; height: 44px; }
 }
 </style>

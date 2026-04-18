@@ -265,7 +265,7 @@ function cancelDraft() {
 .av-blue { background: var(--color-blue-soft); color: var(--color-blue); }
 .av-purple { background: var(--color-purple-soft); color: var(--color-purple); }
 .av-green { background: var(--color-success-soft); color: var(--color-success); }
-.av-red { background: rgba(239, 68, 68, 0.08); color: var(--color-danger); }
+.av-red { background: var(--color-danger-soft); color: var(--color-danger); }
 
 .sender-info { flex: 1; min-width: 0; }
 
@@ -300,8 +300,8 @@ function cancelDraft() {
 }
 
 .type-message {
-  color: #34C759;
-  background: rgba(52, 199, 89, 0.1);
+  color: var(--color-success);
+  background: var(--color-success-soft);
 }
 
 .priority-dot {
@@ -344,7 +344,7 @@ function cancelDraft() {
   padding: 8px 10px;
   background: var(--color-bg);
   border-radius: var(--radius-md);
-  border-left: 2px solid #34C759;
+  border-left: 2px solid var(--color-success);
 }
 
 .card-summary {
@@ -503,7 +503,7 @@ function cancelDraft() {
   font-weight: 500;
   font-family: inherit;
   border: none;
-  background: #34C759;
+  background: var(--color-success);
   color: #fff;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -512,7 +512,7 @@ function cancelDraft() {
   gap: 5px;
 }
 
-.btn-send-reply:hover:not(:disabled) { background: #2db84d; }
+.btn-send-reply:hover:not(:disabled) { background: var(--teal-800); }
 .btn-send-reply:active:not(:disabled) { transform: scale(0.98); }
 .btn-send-reply:disabled { opacity: 0.4; cursor: default; }
 
