@@ -29,6 +29,11 @@ const { markSeen, refreshCount, startPolling, stopPolling } = useUnread()
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
 const archiveSection = computed(() => sections.value.find(s => s.key === 'archive'))
 
+// Initial-load gate: only true while the first queue fetch is in flight and
+// there's nothing on screen yet. Post-action refreshes also flip `loading`,
+// so we guard on cards.length to avoid flicker during routine re-fetches.
+const initialLoading = computed(() => loading.value && cards.value.length === 0)
+
 
 // ── Toast ──
 const toastMessage = ref('')
@@ -497,13 +502,13 @@ onUnmounted(() => {
       <div class="action-buttons">
         <button
           class="btn-scan"
-          :class="{ scanning: scanning || refreshing }"
+          :class="{ scanning: scanning || refreshing || initialLoading }"
           @click="handleScan"
-          :disabled="scanning || refreshing"
+          :disabled="scanning || refreshing || initialLoading"
         >
-          <svg v-if="!scanning && !refreshing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          <span v-if="scanning || refreshing" class="scan-spinner"></span>
-          {{ refreshing ? 'Loading' : (scanning ? 'Scanning…' : 'Scan') }}
+          <svg v-if="!scanning && !refreshing && !initialLoading" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <span v-if="scanning || refreshing || initialLoading" class="scan-spinner"></span>
+          {{ (refreshing || initialLoading) ? 'Loading' : (scanning ? 'Scanning…' : 'Scan') }}
         </button>
       </div>
 
