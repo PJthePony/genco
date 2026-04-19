@@ -33,7 +33,7 @@ function handlePromote(itemId) {
         </div>
         <div>
           <div class="briefing-digest-title">Daily Briefing</div>
-          <div class="briefing-digest-subtitle">{{ items.length > 0 ? 'Auto-archived summaries' : 'No emails yet today' }}</div>
+          <div class="briefing-digest-subtitle">Auto-archived summaries</div>
         </div>
       </div>
       <div class="briefing-digest-right">
