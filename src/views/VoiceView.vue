@@ -155,14 +155,25 @@ function cancelEdit(id) {
   delete editing.value[id]
 }
 
+const editErrors = ref({})  // id → error message
+const saving = ref({})       // id → bool
+
 async function saveEdit(id) {
   const patch = editing.value[id]
   if (!patch) return
+  saving.value = { ...saving.value, [id]: true }
+  editErrors.value = { ...editErrors.value, [id]: '' }
   try {
     await updateProfile(id, patch)
     delete editing.value[id]
   } catch (err) {
-    error.value = err?.message || 'Save failed'
+    console.error('Bucket save failed:', err)
+    editErrors.value = {
+      ...editErrors.value,
+      [id]: err?.message || 'Save failed — check the console for details',
+    }
+  } finally {
+    saving.value = { ...saving.value, [id]: false }
   }
 }
 
@@ -340,9 +351,12 @@ async function handleLogout() {
                 </div>
                 <button class="btn-link" @click="addPhrase(p.id)">+ Add phrase</button>
               </div>
+              <p v-if="editErrors[p.id]" class="error-line">{{ editErrors[p.id] }}</p>
               <div class="edit-actions">
-                <button class="btn-primary" @click="saveEdit(p.id)">Save</button>
-                <button class="btn-link" @click="cancelEdit(p.id)">Cancel</button>
+                <button class="btn-primary" :disabled="saving[p.id]" @click="saveEdit(p.id)">
+                  {{ saving[p.id] ? 'Saving…' : 'Save' }}
+                </button>
+                <button class="btn-link" @click="cancelEdit(p.id)" :disabled="saving[p.id]">Cancel</button>
               </div>
             </div>
 

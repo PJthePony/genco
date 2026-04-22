@@ -727,6 +727,14 @@ queueRoutes.post("/:id/send", async (c) => {
     cc,
   });
 
+  // Archive the original inbox message so it disappears from the queue view.
+  // Non-fatal if it fails — the reply has already been sent.
+  try {
+    await archiveMessage(tokens, email.gmailMessageId);
+  } catch (err) {
+    console.warn(`Failed to archive after reply (${email.gmailMessageId}):`, err);
+  }
+
   // Mark this queue item as replied
   await db
     .update(emailQueue)
