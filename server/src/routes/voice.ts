@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { gmailConnections, voiceProfiles } from "../db/schema.js";
+import { gmailConnections, voiceProfiles, voiceSamples } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import {
   fetchSentEmailsForVoice,
@@ -21,7 +21,7 @@ export const voiceRoutes = new Hono<{ Variables: { user: AuthUser } }>();
 
 voiceRoutes.use("*", authMiddleware);
 
-// GET /voice — list current profiles for the signed-in user
+// GET /voice — list current profiles + sample corpus stats
 voiceRoutes.get("/", async (c) => {
   const user = c.get("user");
 
@@ -36,15 +36,34 @@ voiceRoutes.get("/", async (c) => {
     ? profiles.filter((p) => p.analyzedAt.getTime() === latestAt.getTime())
     : [];
 
+  // Count of persisted samples (corpus size)
+  const sampleRows = await db.query.voiceSamples.findMany({
+    where: eq(voiceSamples.userId, user.sub),
+    columns: { id: true },
+  });
+
   return c.json({
     analyzedAt: latestAt,
     profiles: active,
+    sampleCount: sampleRows.length,
   });
 });
 
-// POST /voice/analyze — pull sent emails, cluster, replace existing profiles
+// DELETE /voice/samples — wipe the persisted corpus (start fresh)
+voiceRoutes.delete("/samples", async (c) => {
+  const user = c.get("user");
+  await db.delete(voiceSamples).where(eq(voiceSamples.userId, user.sub));
+  return c.json({ ok: true });
+});
+
+// POST /voice/analyze — fetch a batch of sent emails (default 50), append
+// to the persisted corpus, then re-cluster across the full corpus.
+// Body: { batchSize?: number }  (max 100 — Gmail fetch starts timing out above)
 voiceRoutes.post("/analyze", async (c) => {
   const user = c.get("user");
+
+  const body = (await c.req.json().catch(() => ({}))) as { batchSize?: number };
+  const batchSize = Math.min(Math.max(body.batchSize ?? 50, 10), 100);
 
   const connection = await db.query.gmailConnections.findFirst({
     where: eq(gmailConnections.userId, user.sub),
@@ -63,29 +82,62 @@ voiceRoutes.post("/analyze", async (c) => {
       .where(eq(gmailConnections.id, connection.id));
   }
 
-  const samples = await fetchSentEmailsForVoice(tokens, 500);
-  if (samples.length < 20) {
-    return c.json(
-      {
-        error: "Not enough sent emails to analyze (need at least 20)",
-        sampled: samples.length,
-      },
-      422,
+  // Skip messages we've already pulled in prior batches
+  const existing = await db.query.voiceSamples.findMany({
+    where: eq(voiceSamples.userId, user.sub),
+    columns: { gmailMessageId: true, toEmail: true, toName: true, subject: true, body: true },
+  });
+  const seenIds = new Set(existing.map((s) => s.gmailMessageId));
+
+  const fresh = await fetchSentEmailsForVoice(tokens, batchSize, seenIds);
+
+  // Persist the new batch
+  if (fresh.length > 0) {
+    await db.insert(voiceSamples).values(
+      fresh.map((s) => ({
+        userId: user.sub,
+        gmailMessageId: s.gmailMessageId,
+        toEmail: s.to,
+        toName: s.toName,
+        subject: s.subject,
+        body: s.body,
+        sentAt: s.date,
+      })),
     );
   }
 
-  const buckets = await analyzeVoiceProfiles(
-    samples.map((s) => ({
+  // Build the full corpus (existing + fresh)
+  const corpus = [
+    ...existing.map((s) => ({
+      to: s.toEmail,
+      toName: s.toName ?? "",
+      subject: s.subject ?? "",
+      body: s.body,
+    })),
+    ...fresh.map((s) => ({
       to: s.to,
       toName: s.toName,
       subject: s.subject,
       body: s.body,
     })),
-  );
+  ];
 
-  // Replace existing profiles with the new batch (single transaction-ish: delete then insert)
+  if (corpus.length < 20) {
+    return c.json(
+      {
+        ok: true,
+        added: fresh.length,
+        totalSamples: corpus.length,
+        buckets: 0,
+        message: `Need at least 20 samples for clustering (have ${corpus.length}). Add more.`,
+      },
+    );
+  }
+
+  const buckets = await analyzeVoiceProfiles(corpus);
+
+  // Replace profiles with the newly clustered set
   await db.delete(voiceProfiles).where(eq(voiceProfiles.userId, user.sub));
-
   const now = new Date();
   if (buckets.length > 0) {
     await db.insert(voiceProfiles).values(
@@ -107,7 +159,8 @@ voiceRoutes.post("/analyze", async (c) => {
 
   return c.json({
     ok: true,
-    sampled: samples.length,
+    added: fresh.length,
+    totalSamples: corpus.length,
     buckets: buckets.length,
     analyzedAt: now,
   });

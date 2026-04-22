@@ -10,16 +10,19 @@ const { signOut } = useAuth()
 const {
   profiles,
   analyzedAt,
+  sampleCount,
   loading,
   analyzing,
   fetchProfiles,
   runAnalysis,
+  resetSamples,
   updateProfile,
   deleteProfile,
   previewDrafts,
 } = useVoice()
 
 const error = ref('')
+const lastRun = ref(null)  // { added, totalSamples, buckets }
 const expandedId = ref(null)
 const editing = ref({})  // id → patch
 const previewOpenFor = ref(null)
@@ -30,12 +33,25 @@ onMounted(fetchProfiles)
 async function handleAnalyze() {
   error.value = ''
   try {
-    const res = await runAnalysis()
-    if (res?.sampled !== undefined) {
-      // success
+    const res = await runAnalysis(50)
+    lastRun.value = {
+      added: res?.added ?? 0,
+      totalSamples: res?.totalSamples ?? sampleCount.value,
+      buckets: res?.buckets ?? profiles.value.length,
+      message: res?.message || null,
     }
   } catch (err) {
     error.value = err?.message || 'Analysis failed'
+  }
+}
+
+async function handleReset() {
+  if (!confirm('Clear the sample corpus and all voice buckets? You\'ll start from scratch.')) return
+  try {
+    await resetSamples()
+    lastRun.value = null
+  } catch (err) {
+    error.value = err?.message || 'Reset failed'
   }
 }
 
@@ -155,18 +171,39 @@ async function handleLogout() {
             Inferred from your sent emails. Drafts to a contact match the closest bucket — or use prior emails to that contact directly when available.
           </p>
         </div>
-        <button class="btn-primary" :disabled="analyzing" @click="handleAnalyze">
-          {{ analyzing ? 'Analyzing…' : (analyzedAt ? 'Re-run analysis' : 'Run analysis') }}
-        </button>
+        <div class="page-actions">
+          <button class="btn-primary" :disabled="analyzing" @click="handleAnalyze">
+            {{ analyzing ? 'Analyzing 50…' : (sampleCount > 0 ? 'Analyze 50 more' : 'Analyze 50 emails') }}
+          </button>
+          <button v-if="sampleCount > 0" class="btn-link-danger" :disabled="analyzing" @click="handleReset">
+            Reset corpus
+          </button>
+        </div>
       </header>
 
-      <p v-if="analyzedAt" class="meta-line">Last analyzed: {{ formatDate(analyzedAt) }}</p>
+      <p class="meta-line">
+        <template v-if="sampleCount > 0">
+          Corpus: <strong>{{ sampleCount }} sent emails</strong> analyzed.
+        </template>
+        <template v-if="analyzedAt">
+          · Last run: {{ formatDate(analyzedAt) }}
+        </template>
+      </p>
+      <p v-if="lastRun" class="run-line">
+        <template v-if="lastRun.added > 0">
+          Added {{ lastRun.added }} new sample{{ lastRun.added === 1 ? '' : 's' }}.
+        </template>
+        <template v-else>
+          No new samples found — you're up to date with your sent folder.
+        </template>
+        <template v-if="lastRun.message"> {{ lastRun.message }}</template>
+      </p>
       <p v-if="error" class="error-line">{{ error }}</p>
 
       <div v-if="loading" class="loading">Loading…</div>
 
       <div v-else-if="profiles.length === 0" class="empty">
-        <p>No voice profiles yet. Run an analysis to scan ~500 of your recent sent emails and discover the distinct ways you write to different audiences.</p>
+        <p>No voice profiles yet. Click <strong>Analyze 50 emails</strong> to pull a first batch from your sent folder. You can keep adding 50 at a time until the clustering captures your distinct voices.</p>
       </div>
 
       <div v-else class="bucket-list">
@@ -351,9 +388,23 @@ async function handleLogout() {
 }
 
 .meta-line {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  margin: 8px 0 24px;
+  margin: 8px 0 4px;
+}
+
+.meta-line strong { color: var(--text); font-weight: 600; }
+
+.run-line {
+  font-size: 0.72rem;
+  color: var(--color-accent);
+  margin: 0 0 20px;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .error-line {

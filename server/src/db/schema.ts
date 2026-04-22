@@ -319,6 +319,34 @@ export const voiceProfiles = pgTable(
   (table) => [index("idx_voice_profiles_user").on(table.userId)],
 );
 
+// ── Voice Samples ───────────────────────────────────────────────────────────
+// Persisted corpus of sent emails used for voice analysis. Fetched 50 at a
+// time so the Gmail call doesn't timeout. Re-clustered on each batch.
+
+export const voiceSamples = pgTable(
+  "voice_samples",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
+    gmailMessageId: text("gmail_message_id").notNull(),
+    toEmail: text("to_email").notNull(),
+    toName: text("to_name"),
+    subject: text("subject"),
+    body: text("body").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_voice_samples_user_msg").on(
+      table.userId,
+      table.gmailMessageId,
+    ),
+    index("idx_voice_samples_user").on(table.userId),
+  ],
+);
+
 // ── Follow-Up Queue ─────────────────────────────────────────────────────────
 
 export const followUpQueue = pgTable(

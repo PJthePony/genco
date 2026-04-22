@@ -3,6 +3,7 @@ import { api } from './useApi'
 
 const profiles = ref([])
 const analyzedAt = ref(null)
+const sampleCount = ref(0)
 const loading = ref(false)
 const analyzing = ref(false)
 
@@ -13,20 +14,29 @@ export function useVoice() {
       const data = await api('/voice')
       profiles.value = data.profiles || []
       analyzedAt.value = data.analyzedAt || null
+      sampleCount.value = data.sampleCount || 0
     } finally {
       loading.value = false
     }
   }
 
-  async function runAnalysis() {
+  async function runAnalysis(batchSize = 50) {
     analyzing.value = true
     try {
-      const data = await api('/voice/analyze', { method: 'POST' })
+      const data = await api('/voice/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ batchSize }),
+      })
       await fetchProfiles()
       return data
     } finally {
       analyzing.value = false
     }
+  }
+
+  async function resetSamples() {
+    await api('/voice/samples', { method: 'DELETE' })
+    await fetchProfiles()
   }
 
   async function updateProfile(id, patch) {
@@ -56,10 +66,12 @@ export function useVoice() {
   return {
     profiles,
     analyzedAt,
+    sampleCount,
     loading,
     analyzing,
     fetchProfiles,
     runAnalysis,
+    resetSamples,
     updateProfile,
     deleteProfile,
     previewDrafts,

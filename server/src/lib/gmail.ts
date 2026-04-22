@@ -337,6 +337,7 @@ export async function fetchSentEmailsToContact(
 }
 
 export interface SentEmailSample {
+  gmailMessageId: string;
   to: string;
   toName: string;
   subject: string;
@@ -348,11 +349,16 @@ export interface SentEmailSample {
 /**
  * Fetch the user's recent sent emails for voice analysis.
  * Filters out forwards and one-shot threads (only 1 message in thread).
- * Returns plain-text bodies, capped at ~3000 chars each.
+ * Returns plain-text bodies, capped at ~800 chars each.
+ *
+ * Pass `excludeMessageIds` to resume across batches — already-fetched
+ * messages are skipped so the caller can keep hitting this with small
+ * maxResults (e.g. 50) and never re-process the same message.
  */
 export async function fetchSentEmailsForVoice(
   tokens: GoogleTokens,
   maxResults = 500,
+  excludeMessageIds: Set<string> = new Set(),
 ): Promise<SentEmailSample[]> {
   const { gmail } = getGmailClient(tokens);
   const samples: SentEmailSample[] = [];
@@ -377,6 +383,7 @@ export async function fetchSentEmailsForVoice(
       const batch = messageIds.slice(i, i + 10);
       const fetched = await Promise.all(
         batch.map(async ({ id, threadId }) => {
+          if (excludeMessageIds.has(id)) return null;
           if (threadId && seenThreads.has(threadId)) return null;
           try {
             const msg = await gmail.users.messages.get({
@@ -438,6 +445,7 @@ export async function fetchSentEmailsForVoice(
           : new Date();
 
         samples.push({
+          gmailMessageId: data.id ?? "",
           to,
           toName,
           subject,
