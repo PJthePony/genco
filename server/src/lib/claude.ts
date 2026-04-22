@@ -1197,16 +1197,31 @@ export async function analyzeVoiceProfiles(
     `matchSignals: hints for picking this bucket at draft time. domainHints can include things like "gmail.com", "@chegg.com", or "@anthropic.com". relationshipHints describe the contact category (personal, family, professional, vendor, etc.). notes is a 1-sentence rule.`,
   ].join("\n");
 
-  const userParts: string[] = [`SAMPLES (${samples.length}):`];
+  // Budget: ~150k tokens for input ≈ 600k chars. Leaves room for system
+  // prompt (~2k) and output (~8k).
+  const CHAR_BUDGET = 550_000;
+  const userParts: string[] = [];
+  let chars = 0;
+  let includedCount = 0;
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
-    userParts.push(``);
-    userParts.push(`--- Email ${i + 1} ---`);
-    userParts.push(`To: ${s.toName ? `${s.toName} <${s.to}>` : s.to}`);
-    userParts.push(`Subject: ${s.subject}`);
-    userParts.push(`Body:`);
-    userParts.push(s.body);
+    const body = s.body.length > 700 ? s.body.slice(0, 700) + "…" : s.body;
+    const block = [
+      ``,
+      `--- Email ${i + 1} ---`,
+      `To: ${s.toName ? `${s.toName} <${s.to}>` : s.to}`,
+      `Subject: ${s.subject}`,
+      `Body:`,
+      body,
+    ].join("\n");
+    if (chars + block.length > CHAR_BUDGET) break;
+    userParts.push(block);
+    chars += block.length;
+    includedCount++;
   }
+  userParts.unshift(
+    `SAMPLES (${includedCount} of ${samples.length} after trimming to fit budget):`,
+  );
 
   const userMessage = userParts.join("\n");
 

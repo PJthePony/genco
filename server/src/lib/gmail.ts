@@ -414,7 +414,9 @@ export async function fetchSentEmailsForVoice(
 
         const { text } = extractBody(data.payload);
         if (!text) continue;
-        const cleaned = stripQuotedReply(text).slice(0, 3000).trim();
+        // Keep only the first ~800 chars — style signal is in the opening
+        // sentences, and we need to stay under Claude's 200k input budget.
+        const cleaned = stripQuotedReply(text).slice(0, 800).trim();
         if (cleaned.length < 30) continue; // skip "ok thanks"
 
         // Get thread message count to skip one-shots
