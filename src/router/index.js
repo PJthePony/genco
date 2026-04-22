@@ -19,6 +19,12 @@ const routes = [
     name: 'Dashboard',
     component: () => import('../views/DashboardView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/voice',
+    name: 'Voice',
+    component: () => import('../views/VoiceView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

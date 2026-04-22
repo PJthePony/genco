@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { gmailConnections, voiceProfiles } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
@@ -8,7 +8,14 @@ import {
   refreshAccessToken,
   type GoogleTokens,
 } from "../lib/gmail.js";
-import { analyzeVoiceProfiles } from "../lib/claude.js";
+import {
+  analyzeVoiceProfiles,
+  generateFollowUpDraft,
+  type VoiceContext,
+} from "../lib/claude.js";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const voiceRoutes = new Hono<{ Variables: { user: AuthUser } }>();
 
@@ -103,5 +110,134 @@ voiceRoutes.post("/analyze", async (c) => {
     sampled: samples.length,
     buckets: buckets.length,
     analyzedAt: now,
+  });
+});
+
+// PATCH /voice/:id — edit a bucket (label, description, sample phrases, etc.)
+voiceRoutes.patch("/:id", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) return c.json({ error: "Invalid id" }, 400);
+
+  const body = (await c.req.json().catch(() => ({}))) as Partial<{
+    label: string;
+    description: string;
+    formalityScore: number | string;
+    greetingHabits: string;
+    signOffHabits: string;
+    sentenceStyle: string;
+    samplePhrases: string[];
+  }>;
+
+  const patch: Record<string, unknown> = {};
+  if (typeof body.label === "string") patch.label = body.label;
+  if (typeof body.description === "string") patch.description = body.description;
+  if (body.formalityScore !== undefined)
+    patch.formalityScore = String(body.formalityScore);
+  if (typeof body.greetingHabits === "string")
+    patch.greetingHabits = body.greetingHabits;
+  if (typeof body.signOffHabits === "string")
+    patch.signOffHabits = body.signOffHabits;
+  if (typeof body.sentenceStyle === "string")
+    patch.sentenceStyle = body.sentenceStyle;
+  if (Array.isArray(body.samplePhrases))
+    patch.samplePhrases = body.samplePhrases;
+
+  if (Object.keys(patch).length === 0) {
+    return c.json({ error: "No fields to update" }, 400);
+  }
+
+  const updated = await db
+    .update(voiceProfiles)
+    .set(patch)
+    .where(
+      and(eq(voiceProfiles.id, id), eq(voiceProfiles.userId, user.sub)),
+    )
+    .returning();
+
+  if (updated.length === 0) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true, profile: updated[0] });
+});
+
+// DELETE /voice/:id — remove a bucket
+voiceRoutes.delete("/:id", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) return c.json({ error: "Invalid id" }, 400);
+
+  const deleted = await db
+    .delete(voiceProfiles)
+    .where(
+      and(eq(voiceProfiles.id, id), eq(voiceProfiles.userId, user.sub)),
+    )
+    .returning({ id: voiceProfiles.id });
+
+  if (deleted.length === 0) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// POST /voice/preview — generate side-by-side drafts (with vs without voice)
+// Body: { bucketId: uuid, recipientName: string, recipientEmail: string,
+//         scenario: string }
+// "scenario" is a free-form description of what the email should be about.
+voiceRoutes.post("/preview", async (c) => {
+  const user = c.get("user");
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    bucketId?: string;
+    recipientName?: string;
+    recipientEmail?: string;
+    scenario?: string;
+  };
+
+  if (!body.bucketId || !UUID_RE.test(body.bucketId)) {
+    return c.json({ error: "bucketId is required" }, 400);
+  }
+  if (!body.recipientName || !body.scenario) {
+    return c.json({ error: "recipientName and scenario are required" }, 400);
+  }
+
+  const bucket = await db.query.voiceProfiles.findFirst({
+    where: and(
+      eq(voiceProfiles.id, body.bucketId),
+      eq(voiceProfiles.userId, user.sub),
+    ),
+  });
+  if (!bucket) return c.json({ error: "Bucket not found" }, 404);
+
+  const voice: VoiceContext = {
+    label: bucket.label,
+    description: bucket.description,
+    formalityScore: Number(bucket.formalityScore ?? 50),
+    greetingHabits: bucket.greetingHabits ?? "",
+    signOffHabits: bucket.signOffHabits ?? "",
+    sentenceStyle: bucket.sentenceStyle ?? "",
+    samplePhrases: Array.isArray(bucket.samplePhrases)
+      ? (bucket.samplePhrases as string[])
+      : [],
+  };
+
+  // Run both drafts in parallel
+  const baseOpts = {
+    contactName: body.recipientName,
+    contactEmail: body.recipientEmail ?? "preview@example.com",
+    senderSummary: null,
+    reason: "preview",
+    contextSnapshot: body.scenario,
+    personalFacts: [],
+    lastSubject: null,
+    direction: body.scenario,
+  };
+
+  const [withVoice, withoutVoice] = await Promise.all([
+    generateFollowUpDraft({ ...baseOpts, voice }),
+    generateFollowUpDraft({ ...baseOpts, voice: null }),
+  ]);
+
+  return c.json({
+    ok: true,
+    withVoice,
+    withoutVoice,
+    voiceLabel: bucket.label,
   });
 });
