@@ -45,6 +45,8 @@ function toFollowUpCard(item) {
     contextSnapshot: item.contextSnapshot || '',
     suggestedAction: item.suggestedAction || 'check_in',
     aiDraft: item.aiDraft || null,
+    voiceLabel: item.voiceLabel || null,
+    voiceSource: item.voiceSource || null,
     surfacedAt: item.surfacedAt,
     lastContactAt: contact.lastContactAt,
     lastDirection: contact.lastDirection,
@@ -145,8 +147,10 @@ export function useNetwork() {
       if (item) {
         item.aiDraft = data.draft
         item.drafting = false
+        item.voiceLabel = data.voiceLabel || null
+        item.voiceSource = data.voiceSource || null
       }
-      return data.draft
+      return { draft: data.draft, voiceLabel: data.voiceLabel || null, voiceSource: data.voiceSource || null }
     } catch (err) {
       if (item) item.drafting = false
       console.error('Failed to generate draft:', err)

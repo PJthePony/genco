@@ -294,6 +294,31 @@ export const outboundMessages = pgTable(
   ],
 );
 
+// ── Voice Profiles ──────────────────────────────────────────────────────────
+// Inferred writing-style buckets distilled from a user's recent sent emails.
+// Used to match a draft to the right voice for a given contact.
+
+export const voiceProfiles = pgTable(
+  "voice_profiles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
+    label: text("label").notNull(), // e.g. "Close friends", "Pro-formal"
+    description: text("description").notNull(), // 1-2 sentence summary
+    formalityScore: text("formality_score"), // "0-100" stored as text for flexibility
+    greetingHabits: text("greeting_habits"), // free-form
+    signOffHabits: text("sign_off_habits"),
+    sentenceStyle: text("sentence_style"),
+    samplePhrases: jsonb("sample_phrases").notNull().default("[]"), // string[]
+    sampleRecipients: jsonb("sample_recipients").notNull().default("[]"), // {email, name}[]
+    matchSignals: jsonb("match_signals").notNull().default("{}"), // hints for picking this bucket
+    analyzedAt: timestamp("analyzed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("idx_voice_profiles_user").on(table.userId)],
+);
+
 // ── Follow-Up Queue ─────────────────────────────────────────────────────────
 
 export const followUpQueue = pgTable(

@@ -95,8 +95,9 @@ async function handleFetchSuggestions(id, resolve) {
 
 async function handleGenerateDraft(id, opts, resolve) {
   try {
-    const draft = await generateDraft(id, opts)
-    resolve(draft)
+    const result = await generateDraft(id, opts)
+    // result is { draft, voiceLabel, voiceSource }
+    resolve(result?.draft || null)
   } catch (err) {
     showToast('Draft generation failed')
     resolve(null)

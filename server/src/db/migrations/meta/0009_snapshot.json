@@ -1,6 +1,6 @@
 {
-  "id": "4e432b52-a42e-4f2d-9a1b-3b56a015ec51",
-  "prevId": "26646e75-059b-46e3-9cd2-2dcbeac00102",
+  "id": "cc3d887a-1acf-4860-9f7d-050f28aeb75e",
+  "prevId": "4e432b52-a42e-4f2d-9a1b-3b56a015ec51",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1453,6 +1453,112 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.voice_profiles": {
+      "name": "voice_profiles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "formality_score": {
+          "name": "formality_score",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "greeting_habits": {
+          "name": "greeting_habits",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sign_off_habits": {
+          "name": "sign_off_habits",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sentence_style": {
+          "name": "sentence_style",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sample_phrases": {
+          "name": "sample_phrases",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'"
+        },
+        "sample_recipients": {
+          "name": "sample_recipients",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'"
+        },
+        "match_signals": {
+          "name": "match_signals",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "analyzed_at": {
+          "name": "analyzed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_voice_profiles_user": {
+          "name": "idx_voice_profiles_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

@@ -877,6 +877,16 @@ export async function reclassifyForAction(opts: {
  * Generate a proactive follow-up email draft for a network contact.
  * Called on-demand when the user clicks "Draft" on a follow-up card.
  */
+export interface VoiceContext {
+  label: string;
+  description: string;
+  formalityScore: number;
+  greetingHabits: string;
+  signOffHabits: string;
+  sentenceStyle: string;
+  samplePhrases: string[];
+}
+
 export async function generateFollowUpDraft(opts: {
   contactName: string;
   contactEmail: string;
@@ -888,14 +898,48 @@ export async function generateFollowUpDraft(opts: {
   direction?: string | null;
   previousDraft?: string | null;
   feedback?: string | null;
+  voice?: VoiceContext | null;
+  fewShotExamples?: { subject: string; body: string }[];
 }): Promise<string> {
   const systemParts = [
     `You are drafting a proactive outreach email for P.J. Tanzillo.`,
-    `Write as P.J. — casual, direct, warm but not wordy. First-name basis. No "Dear" or "Best regards."`,
+    `Write in P.J.'s voice. Match the tone, sentence length, greeting and sign-off habits of the examples and voice profile below.`,
     `This is a follow-up or check-in, not a reply to an incoming email. Make it feel natural and thoughtful, not transactional.`,
     `If personal facts are provided, weave them in naturally — don't force them. A birthday wish or a "how'd the marathon go?" is great. Listing every fact you know is creepy.`,
-    `Keep it short — 2-4 sentences max.`,
+    `Keep it short — 2-4 sentences max unless P.J.'s voice for this audience is longer.`,
   ];
+
+  if (opts.voice) {
+    systemParts.push(``);
+    systemParts.push(
+      `VOICE PROFILE FOR THIS AUDIENCE — "${opts.voice.label}" (formality ${opts.voice.formalityScore}/100):`,
+    );
+    systemParts.push(opts.voice.description);
+    if (opts.voice.greetingHabits)
+      systemParts.push(`Greeting: ${opts.voice.greetingHabits}`);
+    if (opts.voice.signOffHabits)
+      systemParts.push(`Sign-off: ${opts.voice.signOffHabits}`);
+    if (opts.voice.sentenceStyle)
+      systemParts.push(`Sentences: ${opts.voice.sentenceStyle}`);
+    if (opts.voice.samplePhrases.length > 0) {
+      systemParts.push(`Phrases P.J. uses with this audience:`);
+      for (const p of opts.voice.samplePhrases.slice(0, 5)) {
+        systemParts.push(`- "${p}"`);
+      }
+    }
+  }
+
+  if (opts.fewShotExamples && opts.fewShotExamples.length > 0) {
+    systemParts.push(``);
+    systemParts.push(
+      `RECENT EMAILS P.J. SENT TO THIS CONTACT — match this voice precisely:`,
+    );
+    for (const ex of opts.fewShotExamples) {
+      systemParts.push(``);
+      systemParts.push(`Subject: ${ex.subject}`);
+      systemParts.push(ex.body);
+    }
+  }
 
   if (opts.senderSummary) {
     systemParts.push(``);
@@ -1035,4 +1079,183 @@ export async function generateDirectionSuggestions(opts: {
     }
   }
   throw lastError ?? new Error("Failed to generate direction suggestions");
+}
+
+/**
+ * Pick the best matching voice bucket for a contact using deterministic rules.
+ * Score: exact-recipient match (5) > domain match (2) > relationship hint hit (1).
+ * Returns the highest-scoring bucket, or null if no buckets were given.
+ *
+ * For ties (e.g. all zero scores), prefers the bucket with the most-middle
+ * formality so we don't accidentally pick "close friends" for a stranger.
+ */
+export function pickVoiceBucket<
+  T extends {
+    formalityScore: string | null;
+    sampleRecipients: unknown;
+    matchSignals: unknown;
+  },
+>(
+  buckets: T[],
+  contact: { email: string; senderSummary: string | null },
+): T | null {
+  if (buckets.length === 0) return null;
+
+  const contactEmail = contact.email.toLowerCase();
+  const contactDomain = contactEmail.split("@")[1] ?? "";
+  const summary = (contact.senderSummary ?? "").toLowerCase();
+
+  let best: { bucket: T; score: number } | null = null;
+  for (const b of buckets) {
+    let score = 0;
+    const recipients = Array.isArray(b.sampleRecipients)
+      ? (b.sampleRecipients as { email?: string }[])
+      : [];
+    if (
+      recipients.some(
+        (r) => (r.email ?? "").toLowerCase() === contactEmail,
+      )
+    ) {
+      score += 5;
+    }
+
+    const signals = (b.matchSignals ?? {}) as {
+      domainHints?: string[];
+      relationshipHints?: string[];
+    };
+    if (signals.domainHints) {
+      for (const hint of signals.domainHints) {
+        const h = hint.toLowerCase().replace(/^@/, "");
+        if (contactDomain === h || contactDomain.endsWith(`.${h}`)) {
+          score += 2;
+        }
+      }
+    }
+    if (signals.relationshipHints && summary) {
+      for (const hint of signals.relationshipHints) {
+        if (summary.includes(hint.toLowerCase())) score += 1;
+      }
+    }
+
+    if (!best || score > best.score) best = { bucket: b, score };
+  }
+
+  if (best && best.score > 0) return best.bucket;
+
+  // Tie-breaker: prefer middle-formality bucket
+  const ranked = [...buckets].sort((a, b) => {
+    const af = Math.abs(Number(a.formalityScore ?? 50) - 50);
+    const bf = Math.abs(Number(b.formalityScore ?? 50) - 50);
+    return af - bf;
+  });
+  return ranked[0] ?? null;
+}
+
+// ── Voice Profile Clustering ────────────────────────────────────────────────
+
+export interface VoiceSample {
+  to: string;
+  toName: string;
+  subject: string;
+  body: string;
+}
+
+export interface VoiceBucket {
+  label: string;
+  description: string;
+  formalityScore: number; // 0-100
+  greetingHabits: string;
+  signOffHabits: string;
+  sentenceStyle: string;
+  samplePhrases: string[];
+  sampleRecipients: { email: string; name: string }[];
+  matchSignals: {
+    domainHints?: string[]; // e.g. ["gmail.com"] vs ["@chegg.com"]
+    relationshipHints?: string[]; // e.g. ["personal", "family"]
+    notes?: string; // free-form rule for picking this bucket
+  };
+}
+
+/**
+ * Cluster a corpus of sent emails into 3-5 voice buckets.
+ * The model is told to discover the buckets from the data, not pre-label them.
+ */
+export async function analyzeVoiceProfiles(
+  samples: VoiceSample[],
+): Promise<VoiceBucket[]> {
+  if (samples.length === 0) return [];
+
+  const system = [
+    `You are analyzing a person's sent emails to discover the distinct writing voices they use with different audiences.`,
+    `Cluster the emails into 3-5 buckets based on actual style differences — not topics.`,
+    `Look at: greeting habits (Hi/Hey/Yo/none), sign-offs (best/thanks/—pj/none), sentence length, formality, contractions, lowercase usage, punctuation, emoji use, business jargon vs casual phrases.`,
+    `For each bucket, name it based on the audience it fits (e.g. "Close friends", "Family", "Pro-formal", "Pro-casual peers", "Service/transactional"). Don't force categories — derive them from the data.`,
+    `Return JSON only, no commentary, no markdown fences. Format:`,
+    `{"buckets":[{"label":"...","description":"...","formalityScore":0-100,"greetingHabits":"...","signOffHabits":"...","sentenceStyle":"...","samplePhrases":["...","..."],"sampleRecipients":[{"email":"...","name":"..."}],"matchSignals":{"domainHints":["..."],"relationshipHints":["..."],"notes":"..."}}]}`,
+    `samplePhrases: 3-5 verbatim short phrases pulled directly from emails in this bucket.`,
+    `sampleRecipients: 2-4 representative recipients from this bucket (use exactly the email + name as provided).`,
+    `matchSignals: hints for picking this bucket at draft time. domainHints can include things like "gmail.com", "@chegg.com", or "@anthropic.com". relationshipHints describe the contact category (personal, family, professional, vendor, etc.). notes is a 1-sentence rule.`,
+  ].join("\n");
+
+  const userParts: string[] = [`SAMPLES (${samples.length}):`];
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    userParts.push(``);
+    userParts.push(`--- Email ${i + 1} ---`);
+    userParts.push(`To: ${s.toName ? `${s.toName} <${s.to}>` : s.to}`);
+    userParts.push(`Subject: ${s.subject}`);
+    userParts.push(`Body:`);
+    userParts.push(s.body);
+  }
+
+  const userMessage = userParts.join("\n");
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+      }
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 8000,
+        system,
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text",
+      );
+      const raw = textBlock?.text ?? "";
+
+      // Strip any markdown fences just in case
+      const cleaned = raw
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim();
+
+      const parsed = JSON.parse(cleaned) as { buckets?: VoiceBucket[] };
+      const buckets = parsed.buckets ?? [];
+      // Defensive: ensure required fields are present
+      return buckets.map((b) => ({
+        label: b.label ?? "Untitled",
+        description: b.description ?? "",
+        formalityScore:
+          typeof b.formalityScore === "number" ? b.formalityScore : 50,
+        greetingHabits: b.greetingHabits ?? "",
+        signOffHabits: b.signOffHabits ?? "",
+        sentenceStyle: b.sentenceStyle ?? "",
+        samplePhrases: Array.isArray(b.samplePhrases) ? b.samplePhrases : [],
+        sampleRecipients: Array.isArray(b.sampleRecipients)
+          ? b.sampleRecipients
+          : [],
+        matchSignals: b.matchSignals ?? {},
+      }));
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) throw err;
+    }
+  }
+  throw lastError ?? new Error("Failed to analyze voice profiles");
 }

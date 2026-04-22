@@ -286,6 +286,195 @@ export interface SenderHistoryEmail {
   direction: "sent" | "received";
 }
 
+/**
+ * Fetch the user's most recent N emails sent TO a specific recipient.
+ * Returns plain-text bodies for use as few-shot voice examples.
+ */
+export async function fetchSentEmailsToContact(
+  tokens: GoogleTokens,
+  recipientEmail: string,
+  limit = 5,
+): Promise<{ subject: string; date: Date; body: string }[]> {
+  const { gmail } = getGmailClient(tokens);
+  const out: { subject: string; date: Date; body: string }[] = [];
+
+  const listResponse = await gmail.users.messages.list({
+    userId: "me",
+    q: `to:${recipientEmail} in:sent`,
+    maxResults: Math.max(limit * 2, 10),
+  });
+
+  const ids = (listResponse.data.messages ?? [])
+    .map((m) => m.id!)
+    .filter(Boolean)
+    .slice(0, limit * 2);
+
+  for (const id of ids) {
+    if (out.length >= limit) break;
+    try {
+      const msg = await gmail.users.messages.get({
+        userId: "me",
+        id,
+        format: "full",
+      });
+      const headers: Record<string, string> = {};
+      for (const h of msg.data.payload?.headers ?? []) {
+        if (h.name && h.value) headers[h.name.toLowerCase()] = h.value;
+      }
+      const subject = headers["subject"] ?? "";
+      if (/^(fwd|fw|automatic reply)/i.test(subject)) continue;
+      const { text } = extractBody(msg.data.payload);
+      if (!text) continue;
+      const cleaned = stripQuotedReply(text).slice(0, 1500).trim();
+      if (cleaned.length < 30) continue;
+      const date = headers["date"] ? new Date(headers["date"]) : new Date();
+      out.push({ subject, date, body: cleaned });
+    } catch {}
+  }
+
+  out.sort((a, b) => b.date.getTime() - a.date.getTime());
+  return out.slice(0, limit);
+}
+
+export interface SentEmailSample {
+  to: string;
+  toName: string;
+  subject: string;
+  date: Date;
+  body: string;
+  threadMessageCount: number;
+}
+
+/**
+ * Fetch the user's recent sent emails for voice analysis.
+ * Filters out forwards and one-shot threads (only 1 message in thread).
+ * Returns plain-text bodies, capped at ~3000 chars each.
+ */
+export async function fetchSentEmailsForVoice(
+  tokens: GoogleTokens,
+  maxResults = 500,
+): Promise<SentEmailSample[]> {
+  const { gmail } = getGmailClient(tokens);
+  const samples: SentEmailSample[] = [];
+  const seenThreads = new Set<string>();
+  let pageToken: string | undefined;
+
+  while (samples.length < maxResults) {
+    const listResponse = await gmail.users.messages.list({
+      userId: "me",
+      q: "in:sent -subject:Fwd -subject:FW",
+      maxResults: Math.min(100, maxResults - samples.length + 50),
+      pageToken,
+    });
+
+    const messageIds = (listResponse.data.messages ?? [])
+      .map((m) => ({ id: m.id!, threadId: m.threadId }))
+      .filter((m) => m.id);
+    if (messageIds.length === 0) break;
+
+    // Fetch in parallel batches of 10
+    for (let i = 0; i < messageIds.length; i += 10) {
+      const batch = messageIds.slice(i, i + 10);
+      const fetched = await Promise.all(
+        batch.map(async ({ id, threadId }) => {
+          if (threadId && seenThreads.has(threadId)) return null;
+          try {
+            const msg = await gmail.users.messages.get({
+              userId: "me",
+              id,
+              format: "full",
+            });
+            return msg.data;
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      for (const data of fetched) {
+        if (!data) continue;
+        const tId = data.threadId ?? data.id ?? "";
+        if (seenThreads.has(tId)) continue;
+        seenThreads.add(tId);
+
+        const headers: Record<string, string> = {};
+        for (const h of data.payload?.headers ?? []) {
+          if (h.name && h.value) headers[h.name.toLowerCase()] = h.value;
+        }
+
+        const subject = headers["subject"] ?? "";
+        // Skip forwards and auto-replies
+        if (/^(fwd|fw|automatic reply|out of office)/i.test(subject)) continue;
+
+        const toRaw = headers["to"] ?? "";
+        const { name: toName, email: to } = parseFromHeader(toRaw);
+        if (!to || to.includes(",")) continue; // skip multi-recipient blasts
+        // Skip self-emails
+        if (data.labelIds?.includes("DRAFT")) continue;
+
+        const { text } = extractBody(data.payload);
+        if (!text) continue;
+        const cleaned = stripQuotedReply(text).slice(0, 3000).trim();
+        if (cleaned.length < 30) continue; // skip "ok thanks"
+
+        // Get thread message count to skip one-shots
+        let threadMessageCount = 1;
+        if (tId) {
+          try {
+            const thread = await gmail.users.threads.get({
+              userId: "me",
+              id: tId,
+              format: "minimal",
+            });
+            threadMessageCount = thread.data.messages?.length ?? 1;
+          } catch {}
+        }
+        if (threadMessageCount < 2) continue; // skip one-shots
+
+        const date = headers["date"]
+          ? new Date(headers["date"])
+          : new Date();
+
+        samples.push({
+          to,
+          toName,
+          subject,
+          date,
+          body: cleaned,
+          threadMessageCount,
+        });
+
+        if (samples.length >= maxResults) break;
+      }
+      if (samples.length >= maxResults) break;
+    }
+
+    pageToken = listResponse.data.nextPageToken ?? undefined;
+    if (!pageToken) break;
+  }
+
+  return samples;
+}
+
+/**
+ * Strip the quoted reply portion from a plain-text email body.
+ * Removes everything after lines like "On Mon, Jan 1, 2024 at 10:00 AM X wrote:"
+ * or lines starting with "> " (typical quoted reply markers).
+ */
+function stripQuotedReply(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    if (/^On .* wrote:\s*$/.test(line.trim())) break;
+    if (/^-{2,}\s*Original Message\s*-{2,}/i.test(line.trim())) break;
+    if (/^From: .+/.test(line.trim()) && out.length > 3) break;
+    out.push(line);
+  }
+  // Also drop trailing > lines
+  while (out.length && /^>/.test(out[out.length - 1].trim())) out.pop();
+  return out.join("\n");
+}
+
 // ── Thread Reply Detection ──────────────────────────────────────────────────
 
 /**

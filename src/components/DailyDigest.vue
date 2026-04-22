@@ -65,7 +65,7 @@ function handlePromote(itemId) {
               aria-label="Move to action queue"
             >
               <span v-if="promotingIds.has(item.id)" class="promote-spinner"></span>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
             </button>
           </div>
         </div>

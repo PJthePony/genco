@@ -11,11 +11,13 @@ import {
   emailQueue,
   outboundMessages,
   userNoiseList,
+  voiceProfiles,
 } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { env } from "../config.js";
 import {
   fetchSenderHistory,
+  fetchSentEmailsToContact,
   refreshAccessToken,
   createDraft,
   sendReply,
@@ -25,6 +27,7 @@ import {
   buildSenderSummaryFromHistory,
   generateFollowUpDraft,
   generateDirectionSuggestions,
+  pickVoiceBucket,
 } from "../lib/claude.js";
 import { isNoiseEmail } from "../lib/noise.js";
 
@@ -406,6 +409,72 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     limit: 10,
   });
 
+  // Voice match: prefer per-contact few-shot from prior sent emails;
+  // fall back to picking the best matching voice bucket.
+  const buckets = await db.query.voiceProfiles.findMany({
+    where: eq(voiceProfiles.userId, user.sub),
+  });
+
+  let fewShotExamples: { subject: string; body: string }[] = [];
+  let voiceLabel: string | null = null;
+  let voiceSource: "history" | "bucket" | "default" = "default";
+  let voiceContext: Parameters<typeof generateFollowUpDraft>[0]["voice"] = null;
+
+  // Pull Gmail tokens once if we'll need them
+  const connection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, user.sub),
+  });
+  if (connection) {
+    let tokens = connection.googleTokens as GoogleTokens;
+    if (
+      tokens.expiry_date &&
+      tokens.expiry_date < Date.now() + 5 * 60 * 1000
+    ) {
+      try {
+        tokens = await refreshAccessToken(tokens);
+        await db
+          .update(gmailConnections)
+          .set({ googleTokens: tokens, updatedAt: new Date() })
+          .where(eq(gmailConnections.id, connection.id));
+      } catch {}
+    }
+    try {
+      const prior = await fetchSentEmailsToContact(tokens, contact.email, 3);
+      if (prior.length >= 2) {
+        fewShotExamples = prior.map((p) => ({
+          subject: p.subject,
+          body: p.body,
+        }));
+        voiceSource = "history";
+        voiceLabel = "Your prior emails to this contact";
+      }
+    } catch (err) {
+      console.warn("Few-shot fetch failed:", err);
+    }
+  }
+
+  if (voiceSource !== "history" && buckets.length > 0) {
+    const picked = pickVoiceBucket(buckets, {
+      email: contact.email,
+      senderSummary: summary?.summary ?? null,
+    });
+    if (picked) {
+      voiceSource = "bucket";
+      voiceLabel = picked.label;
+      voiceContext = {
+        label: picked.label,
+        description: picked.description,
+        formalityScore: Number(picked.formalityScore ?? 50),
+        greetingHabits: picked.greetingHabits ?? "",
+        signOffHabits: picked.signOffHabits ?? "",
+        sentenceStyle: picked.sentenceStyle ?? "",
+        samplePhrases: Array.isArray(picked.samplePhrases)
+          ? (picked.samplePhrases as string[])
+          : [],
+      };
+    }
+  }
+
   const draft = await generateFollowUpDraft({
     contactName: contact.displayName,
     contactEmail: contact.email,
@@ -417,6 +486,8 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     direction: body.direction?.trim() || null,
     previousDraft: body.previousDraft?.trim() || null,
     feedback: body.feedback?.trim() || null,
+    voice: voiceContext,
+    fewShotExamples,
   });
 
   await db
@@ -424,7 +495,7 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     .set({ aiDraft: draft })
     .where(eq(followUpQueue.id, id));
 
-  return c.json({ ok: true, draft });
+  return c.json({ ok: true, draft, voiceLabel, voiceSource });
 });
 
 // POST /network/follow-ups/:id/suggestions — 3-4 direction chips for the draft

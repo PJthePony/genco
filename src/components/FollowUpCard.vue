@@ -234,6 +234,10 @@ defineExpose({})
 
     <!-- Phase: review -->
     <div v-else-if="phase === 'review'" class="draft-section">
+      <div v-if="card.voiceLabel" class="voice-tag" :title="card.voiceSource === 'history' ? 'Mirroring your prior emails to this contact' : 'Best-match voice bucket'">
+        Voice: {{ card.voiceLabel }}
+        <span class="voice-source">· {{ card.voiceSource === 'history' ? 'from your history' : 'inferred bucket' }}</span>
+      </div>
       <textarea
         v-model="draftText"
         class="draft-textarea"
@@ -719,6 +723,18 @@ defineExpose({})
 
 .btn-send-now:hover:not(:disabled) { filter: brightness(1.05); }
 .btn-send-now:disabled { opacity: 0.4; cursor: default; }
+
+.voice-tag {
+  font-size: 0.62rem;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+.voice-source {
+  opacity: 0.7;
+  margin-left: 4px;
+}
 
 .btn-send-now.confirming {
   background: var(--color-danger, #a83a4a);
