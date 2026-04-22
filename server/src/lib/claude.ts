@@ -669,16 +669,50 @@ export async function generateReplyFromDirection(opts: {
   fromEmail: string;
   subject: string;
   bodyText: string;
-  direction: string;
+  direction?: string | null;
   senderSummary?: string | null;
+  voice?: VoiceContext | null;
+  fewShotExamples?: { subject: string; body: string }[];
+  previousDraft?: string | null;
+  feedback?: string | null;
 }): Promise<string> {
   const systemParts = [
     `You are drafting an email reply for P.J. Tanzillo.`,
-    `Write as P.J. — casual, direct, warm but not wordy. First-name basis. No "Dear" or "Best regards."`,
-    `Keep it short and natural. Match P.J.'s tone: friendly, efficient, slightly informal.`,
-    ``,
-    `The user has described the direction of the reply. Follow it closely.`,
+    `Write in P.J.'s voice. Match the tone, sentence length, greeting and sign-off habits of the examples and voice profile below.`,
+    `Keep it short and natural unless P.J.'s voice for this audience is longer.`,
   ];
+
+  if (opts.voice) {
+    systemParts.push(``);
+    systemParts.push(
+      `VOICE PROFILE FOR THIS AUDIENCE — "${opts.voice.label}" (formality ${opts.voice.formalityScore}/100):`,
+    );
+    systemParts.push(opts.voice.description);
+    if (opts.voice.greetingHabits)
+      systemParts.push(`Greeting: ${opts.voice.greetingHabits}`);
+    if (opts.voice.signOffHabits)
+      systemParts.push(`Sign-off: ${opts.voice.signOffHabits}`);
+    if (opts.voice.sentenceStyle)
+      systemParts.push(`Sentences: ${opts.voice.sentenceStyle}`);
+    if (opts.voice.samplePhrases.length > 0) {
+      systemParts.push(`Phrases P.J. uses with this audience:`);
+      for (const p of opts.voice.samplePhrases.slice(0, 5)) {
+        systemParts.push(`- "${p}"`);
+      }
+    }
+  }
+
+  if (opts.fewShotExamples && opts.fewShotExamples.length > 0) {
+    systemParts.push(``);
+    systemParts.push(
+      `RECENT EMAILS P.J. SENT TO THIS CONTACT — match this voice precisely:`,
+    );
+    for (const ex of opts.fewShotExamples) {
+      systemParts.push(``);
+      systemParts.push(`Subject: ${ex.subject}`);
+      systemParts.push(ex.body);
+    }
+  }
 
   if (opts.senderSummary) {
     systemParts.push(``);
@@ -689,18 +723,36 @@ export async function generateReplyFromDirection(opts: {
   const system = systemParts.join("\n");
   const bodySnippet = opts.bodyText.slice(0, 2000);
 
-  const userMessage = [
+  const userParts = [
     `ORIGINAL EMAIL:`,
     `From: ${opts.fromName} <${opts.fromEmail}>`,
     `Subject: ${opts.subject}`,
     ``,
     bodySnippet,
-    ``,
-    `REPLY DIRECTION:`,
-    opts.direction,
-    ``,
-    `Write the reply now. Just the reply body — no subject line, no greeting header, no signature block.`,
-  ].join("\n");
+  ];
+
+  if (opts.direction) {
+    userParts.push(``);
+    userParts.push(`P.J.'S DIRECTION FOR THIS REPLY: ${opts.direction}`);
+  }
+
+  userParts.push(``);
+  if (opts.previousDraft && opts.feedback) {
+    userParts.push(`PREVIOUS DRAFT:`);
+    userParts.push(opts.previousDraft);
+    userParts.push(``);
+    userParts.push(`P.J.'S FEEDBACK ON THE DRAFT: ${opts.feedback}`);
+    userParts.push(``);
+    userParts.push(
+      `Rewrite the reply applying the feedback. Just the body — no subject line, no greeting header, no signature block.`,
+    );
+  } else {
+    userParts.push(
+      `Write the reply now. Just the reply body — no subject line, no greeting header, no signature block.`,
+    );
+  }
+
+  const userMessage = userParts.join("\n");
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {

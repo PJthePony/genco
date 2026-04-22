@@ -14,6 +14,9 @@ const emit = defineEmits([
   'open-email',
   'override',
   'bulk-approve',
+  'fetch-suggestions',
+  'generate-draft',
+  'send',
 ])
 
 const expanded = ref(props.section.count > 0)
@@ -125,6 +128,9 @@ function handleSkip(cardId) {
             @skip="handleSkip"
             @open-email="$emit('open-email', $event)"
             @override="$emit('override', $event)"
+            @fetch-suggestions="(id, resolve) => $emit('fetch-suggestions', id, resolve)"
+            @generate-draft="(id, opts, resolve) => $emit('generate-draft', id, opts, resolve)"
+            @send="(id, body) => $emit('send', id, body)"
           />
         </div>
         <CompactRow

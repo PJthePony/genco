@@ -21,7 +21,7 @@ const route = useRoute()
 const router = useRouter()
 const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
-const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, overrideAction, generateDraft: generateReplyDraft } = useGroupedQueue()
+const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, overrideAction, generateDraft: generateReplyDraft, fetchDirectionSuggestions: fetchQueueSuggestions, sendReply: sendQueueReply } = useGroupedQueue()
 const { items: digestItems, fetchDigest, promoteItem } = useDigest()
 const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, fetchDirectionSuggestions, sendFollowUp, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
 const { markSeen, refreshCount, startPolling, stopPolling } = useUnread()
@@ -128,6 +128,37 @@ async function handleSendNow(id, body) {
   try {
     await sendFollowUp(id, body)
     refreshCount()
+    showToast('Sent')
+  } catch (err) {
+    showToast('Send failed')
+  }
+}
+
+// ── Action Queue reply flow (emails) ──
+
+async function handleQueueFetchSuggestions(id, resolve) {
+  try {
+    const opts = await fetchQueueSuggestions(id)
+    resolve(opts)
+  } catch (err) {
+    showToast('Could not load suggestions')
+    resolve([])
+  }
+}
+
+async function handleQueueGenerateDraft(id, opts, resolve) {
+  try {
+    const result = await generateReplyDraft(id, opts)
+    resolve(result || null)
+  } catch (err) {
+    showToast('Draft generation failed')
+    resolve(null)
+  }
+}
+
+async function handleQueueSend(id, body) {
+  try {
+    await sendQueueReply(id, body)
     showToast('Sent')
   } catch (err) {
     showToast('Send failed')
@@ -560,6 +591,9 @@ onUnmounted(() => {
 
         @override="handleOverride"
         @bulk-approve="handleBulkApprove"
+        @fetch-suggestions="handleQueueFetchSuggestions"
+        @generate-draft="handleQueueGenerateDraft"
+        @send="handleQueueSend"
       />
 
       <!-- Follow Up (proactive outreach) -->
@@ -589,6 +623,9 @@ onUnmounted(() => {
 
         @override="handleOverride"
         @bulk-approve="handleBulkApprove"
+        @fetch-suggestions="handleQueueFetchSuggestions"
+        @generate-draft="handleQueueGenerateDraft"
+        @send="handleQueueSend"
       />
     </div>
 

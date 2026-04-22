@@ -120,40 +120,12 @@ export async function executeAction(
   try {
     switch (action) {
       case "reply": {
+        // New behavior: sending is handled explicitly via POST /queue/:id/send
+        // (which also marks the item processed). Hitting the reply action
+        // directly just archives the message.
         if (!tokens) return { ok: false, error: "Gmail not connected" };
-
-        let body: string;
-
-        if (payload?.replyContext) {
-          // Legacy path: user provided context via the old override flow
-          const senderSummary = await db.query.senderSummaries.findFirst({
-            where: eq(senderSummaries.senderEmail, email.fromEmail),
-          });
-
-          body = await generateReplyDraft({
-            fromName: email.fromName ?? "",
-            fromEmail: email.fromEmail,
-            subject: email.subject,
-            bodyText: email.bodyText ?? "",
-            replyContext: payload.replyContext,
-            senderSummary: senderSummary?.summary ?? null,
-          });
-        } else {
-          // New path: frontend generates the draft via /queue/:id/draft
-          // and passes the full replyBody here
-          body =
-            payload?.replyBody ?? email.aiReplyDraft ?? "Thanks for the email!";
-        }
-
-        const draftId = await createDraft(tokens, {
-          threadId: email.gmailThreadId ?? email.gmailMessageId,
-          to: email.fromEmail,
-          subject: email.subject,
-          body,
-        });
-        // Archive after drafting
         await archiveMessage(tokens, email.gmailMessageId);
-        return { ok: true, draftId };
+        return { ok: true };
       }
 
       case "act": {

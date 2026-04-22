@@ -24,6 +24,7 @@ export function useGroupedQueue() {
   const {
     items, loading, scanning, error,
     fetchQueue, scanInbox, executeAction, overrideAction, generateDraft,
+    fetchDirectionSuggestions, sendReply,
   } = useQueue()
 
   const sections = computed(() => {
@@ -69,5 +70,7 @@ export function useGroupedQueue() {
     executeAction,
     overrideAction,
     generateDraft,
+    fetchDirectionSuggestions,
+    sendReply,
   }
 }

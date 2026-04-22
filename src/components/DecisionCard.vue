@@ -1,23 +1,29 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
+import DraftReplyPanel from './DraftReplyPanel.vue'
 
 const props = defineProps({
   card: Object,
 })
 
-const emit = defineEmits(['approve', 'skip', 'open-email', 'override'])
+const emit = defineEmits([
+  'approve', 'skip', 'open-email', 'override',
+  // New draft flow (emails only)
+  'fetch-suggestions', 'generate-draft', 'send',
+])
 
-// ── Reply two-step state ──
+// ── Email reply: uses DraftReplyPanel ──
+const draftOpen = ref(false)
+
+// ── iMessage reply flow (unchanged legacy behavior) ──
 const reviewingReply = ref(false)
 const replySummaryText = ref('')
 const reviewTextarea = ref(null)
-
-// ── iMessage draft review state ──
 const reviewingDraft = ref(false)
 const draftText = ref('')
 const draftTextarea = ref(null)
 
-// When the parent sets pendingReply on the card, enter draft review mode
+// When the parent sets pendingReply on the card, enter draft review mode (iMessage path)
 watch(() => props.card.pendingReply, (val) => {
   if (val) {
     draftText.value = val
@@ -69,11 +75,15 @@ function handleAction(action) {
     emit('override', { cardId: card.id, action: action.actionKey, subAction: action.subAction || null })
   }
 
-  // Reply → enter reply direction textarea
+  // Reply → email uses new DraftReplyPanel; iMessage uses legacy flow
   if (action.key === 'reply') {
-    replySummaryText.value = card.replySummary || ''
-    reviewingReply.value = true
-    nextTick(() => reviewTextarea.value?.focus())
+    if (card.type === 'message') {
+      replySummaryText.value = card.replySummary || ''
+      reviewingReply.value = true
+      nextTick(() => reviewTextarea.value?.focus())
+    } else {
+      draftOpen.value = true
+    }
     return
   }
 
@@ -145,8 +155,24 @@ function cancelDraft() {
     <div v-if="card.type === 'message' && card.messageText" class="card-message-text">{{ card.messageText }}</div>
     <div class="card-summary">{{ card.summary }}</div>
 
-    <!-- Reply review step — shows AI's one-line summary for approval/editing -->
-    <div v-if="reviewingReply" class="reply-review">
+    <!-- Email: multi-step draft flow -->
+    <DraftReplyPanel
+      v-if="draftOpen"
+      :card-id="card.id"
+      :contact-name="card.sender"
+      :contact-email="card.fromEmail || ''"
+      draft-button-label="Draft reply"
+      :can-send="true"
+      :can-save-draft="false"
+      :can-send-imessage="false"
+      @fetch-suggestions="(id, resolve) => emit('fetch-suggestions', id, resolve)"
+      @generate-draft="(id, opts, resolve) => emit('generate-draft', id, opts, resolve)"
+      @send="(id, body) => { draftOpen = false; emit('send', id, body) }"
+      @closed="draftOpen = false"
+    />
+
+    <!-- iMessage reply review step — shows AI's one-line summary for approval/editing -->
+    <div v-else-if="reviewingReply" class="reply-review">
       <div class="review-label">Reply direction</div>
       <textarea
         ref="reviewTextarea"

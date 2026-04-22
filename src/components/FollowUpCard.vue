@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
+import DraftReplyPanel from './DraftReplyPanel.vue'
 
 const props = defineProps({
   card: Object,
@@ -12,21 +13,7 @@ const emit = defineEmits([
 ])
 
 const showSnoozeOptions = ref(false)
-
-// Draft flow state machine: 'idle' | 'direction' | 'drafting' | 'review'
-const phase = ref('idle')
-const directionOptions = ref([])
-const loadingSuggestions = ref(false)
-const customDirection = ref('')
-const pickedDirection = ref('')
-const draftText = ref('')
-const feedback = ref('')
-const refining = ref(false)
-const savingDraft = ref(false)
-const sendingMessage = ref(false)
-const sending = ref(false)
-const confirmingSend = ref(false)
-let confirmTimer = null
+const draftOpen = ref(false)
 
 const hasPhone = computed(() => !!props.card.contactPhone)
 
@@ -36,7 +23,6 @@ const gmailUrl = computed(() => {
 })
 
 const draftButtonLabel = computed(() => {
-  if (props.card.aiDraft && phase.value === 'idle') return 'View draft'
   return props.card.suggestedAction === 'nudge' ? 'Draft check-in' : 'Draft reply'
 })
 
@@ -45,115 +31,13 @@ function truncate(text, max) {
   return text.slice(0, max).trimEnd() + '...'
 }
 
-async function startDraft() {
-  // If a draft already exists, jump straight to review
-  if (props.card.aiDraft) {
-    draftText.value = props.card.aiDraft
-    phase.value = 'review'
-    return
-  }
-  phase.value = 'direction'
-  if (directionOptions.value.length === 0) {
-    loadingSuggestions.value = true
-    const opts = await emitAsync('fetch-suggestions', props.card.id)
-    directionOptions.value = opts || []
-    loadingSuggestions.value = false
-  }
+function openDraft() {
+  draftOpen.value = true
 }
 
-function pickDirection(text) {
-  pickedDirection.value = text
-  customDirection.value = ''
-  generate(text)
+function onDraftClosed() {
+  draftOpen.value = false
 }
-
-function pickCustom() {
-  if (!customDirection.value.trim()) return
-  pickedDirection.value = customDirection.value.trim()
-  generate(pickedDirection.value)
-}
-
-function pickNoDirection() {
-  pickedDirection.value = ''
-  generate('')
-}
-
-async function generate(direction) {
-  phase.value = 'drafting'
-  const draft = await emitAsync('generate-draft', props.card.id, { direction })
-  if (draft) {
-    draftText.value = draft
-    phase.value = 'review'
-  } else {
-    phase.value = 'direction'
-  }
-}
-
-async function refineDraft() {
-  if (!feedback.value.trim()) return
-  refining.value = true
-  const draft = await emitAsync('generate-draft', props.card.id, {
-    previousDraft: draftText.value,
-    feedback: feedback.value.trim(),
-  })
-  if (draft) {
-    draftText.value = draft
-    feedback.value = ''
-  }
-  refining.value = false
-}
-
-function cancelDraft() {
-  phase.value = 'idle'
-  pickedDirection.value = ''
-  customDirection.value = ''
-  feedback.value = ''
-  clearConfirm()
-}
-
-function handleSaveDraft() {
-  if (!draftText.value.trim()) return
-  savingDraft.value = true
-  emit('save-draft', props.card.id, draftText.value.trim())
-}
-
-function handleSendMessage() {
-  if (!draftText.value.trim()) return
-  sendingMessage.value = true
-  emit('send-imessage', props.card.id, draftText.value.trim())
-}
-
-function handleSendNow() {
-  if (!draftText.value.trim()) return
-  if (!confirmingSend.value) {
-    confirmingSend.value = true
-    confirmTimer = setTimeout(() => { confirmingSend.value = false }, 3000)
-    return
-  }
-  clearConfirm()
-  sending.value = true
-  emit('send', props.card.id, draftText.value.trim())
-}
-
-function clearConfirm() {
-  if (confirmTimer) {
-    clearTimeout(confirmTimer)
-    confirmTimer = null
-  }
-  confirmingSend.value = false
-}
-
-// Bridge: parent emits return undefined; we wrap with a promise resolved by parent
-// via a callback ref pattern would be heavy. Instead, parent passes a helper down
-// — but simpler: emit and parent assigns result back via card props.
-// Here we expose an imperative helper the parent can call after handlers run.
-async function emitAsync(eventName, ...args) {
-  return new Promise((resolve) => {
-    emit(eventName, ...args, resolve)
-  })
-}
-
-defineExpose({})
 </script>
 
 <template>
@@ -192,100 +76,30 @@ defineExpose({})
 
     <div class="expanded-context">{{ card.contextSnapshot }}</div>
 
-    <!-- Phase: direction picker -->
-    <div v-if="phase === 'direction'" class="draft-section">
-      <div class="phase-label">Pick a direction:</div>
-      <div v-if="loadingSuggestions" class="draft-loading">
-        <span class="draft-spinner"></span>
-        Loading suggestions...
-      </div>
-      <template v-else>
-        <div class="direction-chips">
-          <button
-            v-for="opt in directionOptions"
-            :key="opt"
-            class="chip"
-            @click="pickDirection(opt)"
-          >{{ opt }}</button>
-        </div>
-        <div class="custom-direction">
-          <input
-            v-model="customDirection"
-            class="direction-input"
-            placeholder="Other — type your own…"
-            @keyup.enter="pickCustom"
-          />
-          <button class="btn-direction-go" @click="pickCustom" :disabled="!customDirection.trim()">Go</button>
-        </div>
-        <div class="direction-footer">
-          <button class="btn-link" @click="pickNoDirection">Skip — let AI decide</button>
-          <button class="btn-link" @click="cancelDraft">Cancel</button>
-        </div>
-      </template>
-    </div>
+    <DraftReplyPanel
+      v-if="draftOpen"
+      :card-id="card.id"
+      :contact-name="card.contactName"
+      :contact-email="card.contactEmail"
+      :contact-phone="card.contactPhone"
+      :draft-button-label="draftButtonLabel"
+      :initial-draft="card.aiDraft || ''"
+      :can-send="true"
+      :can-save-draft="true"
+      :can-send-imessage="true"
+      @fetch-suggestions="(id, resolve) => emit('fetch-suggestions', id, resolve)"
+      @generate-draft="(id, opts, resolve) => emit('generate-draft', id, opts, resolve)"
+      @send="(id, body) => emit('send', id, body)"
+      @save-draft="(id, body) => emit('save-draft', id, body)"
+      @send-imessage="(id, body) => emit('send-imessage', id, body)"
+      @closed="onDraftClosed"
+    />
 
-    <!-- Phase: drafting -->
-    <div v-else-if="phase === 'drafting'" class="draft-section">
-      <div class="draft-loading">
-        <span class="draft-spinner"></span>
-        Drafting{{ pickedDirection ? `: ${pickedDirection}` : '' }}…
-      </div>
-    </div>
-
-    <!-- Phase: review -->
-    <div v-else-if="phase === 'review'" class="draft-section">
-      <div v-if="card.voiceLabel" class="voice-tag" :title="card.voiceSource === 'history' ? 'Mirroring your prior emails to this contact' : 'Best-match voice bucket'">
-        Voice: {{ card.voiceLabel }}
-        <span class="voice-source">· {{ card.voiceSource === 'history' ? 'from your history' : 'inferred bucket' }}</span>
-      </div>
-      <textarea
-        v-model="draftText"
-        class="draft-textarea"
-        rows="5"
-        placeholder="Your follow-up message..."
-      ></textarea>
-
-      <!-- Refine input -->
-      <div class="refine-row">
-        <input
-          v-model="feedback"
-          class="refine-input"
-          placeholder="Refine: shorter, less formal, mention the Tuesday call…"
-          :disabled="refining"
-          @keyup.enter="refineDraft"
-        />
-        <button class="btn-refine" @click="refineDraft" :disabled="refining || !feedback.trim()">
-          {{ refining ? 'Refining…' : 'Refine' }}
-        </button>
-      </div>
-
-      <div class="draft-actions">
-        <button
-          class="btn-send-now"
-          :class="{ confirming: confirmingSend }"
-          @click="handleSendNow"
-          :disabled="sending || refining || !draftText.trim()"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          {{ sending ? 'Sending…' : (confirmingSend ? `Confirm send to ${card.contactEmail}` : 'Send now') }}
-        </button>
-        <button class="btn-draft-save" @click="handleSaveDraft" :disabled="savingDraft || sendingMessage || sending || !draftText.trim()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          {{ savingDraft ? 'Saving…' : 'Save to Drafts' }}
-        </button>
-        <button v-if="hasPhone" class="btn-draft-imessage" @click="handleSendMessage" :disabled="savingDraft || sendingMessage || sending || !draftText.trim()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          {{ sendingMessage ? 'Sending…' : 'iMessage' }}
-        </button>
-        <button class="btn-draft-cancel" @click="cancelDraft" :disabled="savingDraft || sendingMessage || sending">Cancel</button>
-      </div>
-    </div>
-
-    <!-- Action row (only when no draft phase active) -->
-    <div v-if="phase === 'idle'" class="expanded-actions">
-      <button class="btn-action btn-draft" @click="startDraft" :disabled="card.drafting">
+    <!-- Action row (hidden while the draft panel is open) -->
+    <div v-else class="expanded-actions">
+      <button class="btn-action btn-draft" @click="openDraft">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        {{ draftButtonLabel }}
+        {{ card.aiDraft ? 'View draft' : draftButtonLabel }}
       </button>
 
       <div class="snooze-wrapper">
@@ -315,7 +129,7 @@ defineExpose({})
 </template>
 
 <style scoped>
-/* ── Compact row (matches CompactRow.vue style) ── */
+/* ── Compact row ── */
 .compact-row {
   display: flex;
   align-items: center;
@@ -527,19 +341,12 @@ defineExpose({})
   color: var(--color-text);
 }
 
-.btn-action:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .btn-draft:hover:not(:disabled) {
   border-color: var(--color-accent-border);
   color: var(--color-accent);
 }
 
-.snooze-wrapper {
-  position: relative;
-}
+.snooze-wrapper { position: relative; }
 
 .snooze-dropdown {
   position: absolute;
@@ -573,275 +380,6 @@ defineExpose({})
   color: var(--color-text);
 }
 
-/* ── Draft section ── */
-.draft-section {
-  margin: 8px 0 10px;
-}
-
-.phase-label {
-  font-size: 0.7rem;
-  color: var(--color-text-muted);
-  margin-bottom: 8px;
-  letter-spacing: 0.02em;
-}
-
-.direction-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.chip {
-  padding: 6px 12px;
-  border-radius: var(--radius-pill);
-  font-size: 0.72rem;
-  font-family: inherit;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.chip:hover {
-  border-color: var(--color-accent-border);
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.custom-direction {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.direction-input {
-  flex: 1;
-  padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-family: inherit;
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
-.direction-input:focus {
-  outline: none;
-  border-color: var(--color-accent-border);
-}
-
-.btn-direction-go {
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: inherit;
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-}
-
-.btn-direction-go:disabled { opacity: 0.4; cursor: default; }
-
-.direction-footer {
-  display: flex;
-  gap: 12px;
-  font-size: 0.68rem;
-}
-
-.btn-link {
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  font-size: 0.68rem;
-  font-family: inherit;
-  cursor: pointer;
-  padding: 0;
-}
-
-.btn-link:hover { color: var(--color-text); }
-
-.refine-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.refine-input {
-  flex: 1;
-  padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-family: inherit;
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
-.refine-input:focus {
-  outline: none;
-  border-color: var(--color-accent-border);
-}
-
-.btn-refine {
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: inherit;
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
-  cursor: pointer;
-}
-
-.btn-refine:hover:not(:disabled) {
-  border-color: var(--color-accent-border);
-  color: var(--color-accent);
-}
-
-.btn-refine:disabled { opacity: 0.4; cursor: default; }
-
-.btn-send-now {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: inherit;
-  border: none;
-  background: var(--color-accent);
-  color: #fff;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.btn-send-now:hover:not(:disabled) { filter: brightness(1.05); }
-.btn-send-now:disabled { opacity: 0.4; cursor: default; }
-
-.voice-tag {
-  font-size: 0.62rem;
-  color: var(--color-text-muted);
-  margin-bottom: 6px;
-  letter-spacing: 0.02em;
-}
-
-.voice-source {
-  opacity: 0.7;
-  margin-left: 4px;
-}
-
-.btn-send-now.confirming {
-  background: var(--color-danger, #a83a4a);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.85; }
-}
-
-.draft-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
-  padding: 12px 0;
-}
-
-.draft-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-accent);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.draft-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: 0.75rem;
-  font-family: inherit;
-  color: var(--color-text);
-  background: var(--color-bg);
-  resize: vertical;
-  line-height: 1.45;
-}
-
-.draft-textarea:focus {
-  outline: none;
-  border-color: var(--color-accent-border);
-}
-
-.draft-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.btn-draft-save {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: inherit;
-  border: none;
-  background: var(--color-primary);
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn-draft-save:hover { background: var(--color-primary-hover); }
-
-.btn-draft-imessage {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: inherit;
-  border: none;
-  background: var(--color-success);
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn-draft-imessage:hover:not(:disabled) { background: var(--teal-800); }
-.btn-draft-imessage:disabled { opacity: 0.4; cursor: default; }
-
-.btn-draft-cancel {
-  padding: 6px 14px;
-  border-radius: var(--radius-md);
-  font-size: 0.72rem;
-  font-weight: 500;
-  font-family: inherit;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.btn-draft-cancel:hover { color: var(--color-text-secondary); }
-
 .btn-noise {
   margin-left: auto;
   color: var(--color-text-muted);
@@ -860,21 +398,11 @@ defineExpose({})
     padding: 10px 0;
   }
 
-  .compact-sender {
-    font-size: 0.72rem;
-  }
+  .compact-sender { font-size: 0.72rem; }
+  .compact-subject { font-size: 0.68rem; }
+  .compact-summary { font-size: 0.65rem; }
 
-  .compact-subject {
-    font-size: 0.68rem;
-  }
-
-  .compact-summary {
-    font-size: 0.65rem;
-  }
-
-  .compact-right {
-    gap: 4px;
-  }
+  .compact-right { gap: 4px; }
 
   .compact-tag {
     font-size: 0.5rem;
@@ -890,9 +418,7 @@ defineExpose({})
     padding-left: 0;
   }
 
-  .expanded-actions {
-    gap: 6px;
-  }
+  .expanded-actions { gap: 6px; }
 
   .btn-action {
     padding: 10px 14px;
@@ -908,34 +434,6 @@ defineExpose({})
 
   .btn-noise {
     margin-left: 0;
-  }
-
-  .draft-actions {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .btn-draft-save,
-  .btn-draft-imessage {
-    padding: 10px 12px;
-    min-height: 44px;
-    flex: 1 1 auto;
-    justify-content: center;
-  }
-
-  .btn-draft-cancel {
-    padding: 10px 12px;
-    min-height: 44px;
-  }
-
-  .draft-textarea {
-    font-size: 0.72rem;
-  }
-
-  .snooze-dropdown button {
-    padding: 12px 16px;
-    min-height: 44px;
-    font-size: 0.72rem;
   }
 }
 </style>

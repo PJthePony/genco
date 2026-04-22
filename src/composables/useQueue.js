@@ -211,11 +211,11 @@ export function useQueue() {
   }
 
   /**
-   * Generate a full reply draft from a direction/summary string.
+   * Generate a reply draft (supports direction, refinement, voice override).
    * Routes to the correct endpoint based on card type (email vs message).
-   * Returns { draft } with the full reply body.
+   * Returns the full response including { draft, voiceLabel, voiceSource, availableBuckets }.
    */
-  async function generateDraft(cardId, direction) {
+  async function generateDraft(cardId, opts = {}) {
     const card = items.value.find(c => c.id === cardId)
     const endpoint = card?.type === 'message'
       ? `/messages/${cardId}/draft`
@@ -224,11 +224,37 @@ export function useQueue() {
     try {
       const data = await api(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ direction }),
+        body: JSON.stringify(opts),
       })
       return data
     } catch (err) {
       console.error('Draft generation failed:', err)
+      throw err
+    }
+  }
+
+  async function fetchDirectionSuggestions(cardId) {
+    try {
+      const data = await api(`/queue/${cardId}/suggestions`, { method: 'POST' })
+      return data.suggestions || []
+    } catch (err) {
+      console.error('Failed to fetch direction suggestions:', err)
+      return []
+    }
+  }
+
+  async function sendReply(cardId, body) {
+    try {
+      await api(`/queue/${cardId}/send`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      })
+      // Mark cleared locally
+      const card = items.value.find(c => c.id === cardId)
+      if (card) card.cleared = true
+      return true
+    } catch (err) {
+      console.error('Failed to send reply:', err)
       throw err
     }
   }
@@ -250,5 +276,7 @@ export function useQueue() {
     executeAction,
     overrideAction,
     generateDraft,
+    fetchDirectionSuggestions,
+    sendReply,
   }
 }

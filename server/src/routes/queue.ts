@@ -2,11 +2,17 @@ import { Hono } from "hono";
 import { eq, and, desc, isNotNull, gte, or, inArray, count, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { emailQueue, gmailConnections, networkContacts, followUpQueue } from "../db/schema.js";
+import { emailQueue, gmailConnections, networkContacts, followUpQueue, voiceProfiles } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
-import { archiveMessage, unarchiveMessage, refreshAccessToken, type GoogleTokens } from "../lib/gmail.js";
-import { generateReplyFromDirection, reclassifyForAction } from "../lib/claude.js";
+import { archiveMessage, unarchiveMessage, refreshAccessToken, sendReply, fetchSentEmailsToContact, type GoogleTokens } from "../lib/gmail.js";
+import {
+  generateReplyFromDirection,
+  reclassifyForAction,
+  generateDirectionSuggestions,
+  pickVoiceBucket,
+  type VoiceContext,
+} from "../lib/claude.js";
 import { senderSummaries, feedbackLog } from "../db/schema.js";
 
 const VALID_ACTIONS = [
@@ -31,7 +37,10 @@ const actionSchema = z.object({
 });
 
 const draftSchema = z.object({
-  direction: z.string().min(1).max(2000),
+  direction: z.string().max(2000).nullish(),
+  previousDraft: z.string().max(10000).nullish(),
+  feedback: z.string().max(2000).nullish(),
+  voiceBucketId: z.string().uuid().nullish(),
 });
 
 export const queueRoutes = new Hono<{ Variables: { user: AuthUser } }>();
@@ -500,16 +509,211 @@ queueRoutes.post("/:id/draft", async (c) => {
     ),
   });
 
+  // Voice match: prefer few-shot from prior emails to this sender, else
+  // pick the best matching voice bucket (or use the explicit voiceBucketId).
+  const buckets = await db.query.voiceProfiles.findMany({
+    where: eq(voiceProfiles.userId, user.sub),
+  });
+
+  let fewShotExamples: { subject: string; body: string }[] = [];
+  let voiceLabel: string | null = null;
+  let voiceSource: "history" | "bucket" | "default" = "default";
+  let voiceContext: VoiceContext | null = null;
+  let activeBucketId: string | null = null;
+
+  // If user explicitly picked a bucket, honor it (skip history lookup).
+  if (parsed.data.voiceBucketId) {
+    const picked = buckets.find((b) => b.id === parsed.data.voiceBucketId);
+    if (picked) {
+      activeBucketId = picked.id;
+      voiceSource = "bucket";
+      voiceLabel = picked.label;
+      voiceContext = {
+        label: picked.label,
+        description: picked.description,
+        formalityScore: Number(picked.formalityScore ?? 50),
+        greetingHabits: picked.greetingHabits ?? "",
+        signOffHabits: picked.signOffHabits ?? "",
+        sentenceStyle: picked.sentenceStyle ?? "",
+        samplePhrases: Array.isArray(picked.samplePhrases)
+          ? (picked.samplePhrases as string[])
+          : [],
+      };
+    }
+  } else {
+    // Try per-contact few-shot from Gmail
+    const connection = await db.query.gmailConnections.findFirst({
+      where: eq(gmailConnections.userId, user.sub),
+    });
+    if (connection) {
+      let tokens = connection.googleTokens as GoogleTokens;
+      if (
+        tokens.expiry_date &&
+        tokens.expiry_date < Date.now() + 5 * 60 * 1000
+      ) {
+        try {
+          tokens = await refreshAccessToken(tokens);
+          await db
+            .update(gmailConnections)
+            .set({ googleTokens: tokens, updatedAt: new Date() })
+            .where(eq(gmailConnections.id, connection.id));
+        } catch {}
+      }
+      try {
+        const prior = await fetchSentEmailsToContact(tokens, email.fromEmail, 3);
+        if (prior.length >= 2) {
+          fewShotExamples = prior.map((p) => ({
+            subject: p.subject,
+            body: p.body,
+          }));
+          voiceSource = "history";
+          voiceLabel = "Your prior emails to this contact";
+        }
+      } catch (err) {
+        console.warn("Few-shot fetch failed:", err);
+      }
+    }
+
+    if (voiceSource !== "history" && buckets.length > 0) {
+      const picked = pickVoiceBucket(buckets, {
+        email: email.fromEmail,
+        senderSummary: senderSummary?.summary ?? null,
+      });
+      if (picked) {
+        activeBucketId = picked.id;
+        voiceSource = "bucket";
+        voiceLabel = picked.label;
+        voiceContext = {
+          label: picked.label,
+          description: picked.description,
+          formalityScore: Number(picked.formalityScore ?? 50),
+          greetingHabits: picked.greetingHabits ?? "",
+          signOffHabits: picked.signOffHabits ?? "",
+          sentenceStyle: picked.sentenceStyle ?? "",
+          samplePhrases: Array.isArray(picked.samplePhrases)
+            ? (picked.samplePhrases as string[])
+            : [],
+        };
+      }
+    }
+  }
+
   const draft = await generateReplyFromDirection({
     fromName: email.fromName ?? "",
     fromEmail: email.fromEmail,
     subject: email.subject,
     bodyText: email.bodyText ?? "",
-    direction: parsed.data.direction,
+    direction: parsed.data.direction ?? null,
     senderSummary: senderSummary?.summary ?? null,
+    voice: voiceContext,
+    fewShotExamples,
+    previousDraft: parsed.data.previousDraft ?? null,
+    feedback: parsed.data.feedback ?? null,
   });
 
-  return c.json({ draft });
+  return c.json({
+    draft,
+    voiceLabel,
+    voiceSource,
+    activeBucketId,
+    availableBuckets: buckets.map((b) => ({
+      id: b.id,
+      label: b.label,
+      formalityScore: Number(b.formalityScore ?? 50),
+    })),
+  });
+});
+
+// POST /queue/:id/suggestions — 3-4 direction chips for the reply
+queueRoutes.post("/:id/suggestions", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return c.json({ error: "Invalid email ID" }, 400);
+  }
+
+  const email = await db.query.emailQueue.findFirst({
+    where: and(eq(emailQueue.id, id), eq(emailQueue.userId, user.sub)),
+  });
+  if (!email) return c.json({ error: "Email not found" }, 404);
+
+  const summary = await db.query.senderSummaries.findFirst({
+    where: and(
+      eq(senderSummaries.userId, user.sub),
+      eq(senderSummaries.senderEmail, email.fromEmail),
+    ),
+  });
+
+  const suggestions = await generateDirectionSuggestions({
+    contactName: email.fromName ?? email.fromEmail,
+    reason: "reply",
+    contextSnapshot: `Replying to: "${email.subject}". ${
+      (email.bodyText ?? "").slice(0, 400)
+    }`,
+    lastSubject: email.subject,
+    senderSummary: summary?.summary ?? null,
+  });
+
+  return c.json({ ok: true, suggestions });
+});
+
+// POST /queue/:id/send — send the approved reply body to the Gmail thread
+queueRoutes.post("/:id/send", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return c.json({ error: "Invalid email ID" }, 400);
+  }
+
+  const rawBody = (await c.req.json().catch(() => null)) as {
+    body?: string;
+  } | null;
+  if (!rawBody?.body?.trim()) {
+    return c.json({ error: "Reply body is required" }, 400);
+  }
+
+  const email = await db.query.emailQueue.findFirst({
+    where: and(eq(emailQueue.id, id), eq(emailQueue.userId, user.sub)),
+  });
+  if (!email) return c.json({ error: "Email not found" }, 404);
+
+  const connection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, user.sub),
+  });
+  if (!connection) return c.json({ error: "Gmail not connected" }, 422);
+
+  let tokens = connection.googleTokens as GoogleTokens;
+  if (
+    tokens.expiry_date &&
+    tokens.expiry_date < Date.now() + 5 * 60 * 1000
+  ) {
+    tokens = await refreshAccessToken(tokens);
+    await db
+      .update(gmailConnections)
+      .set({ googleTokens: tokens, updatedAt: new Date() })
+      .where(eq(gmailConnections.id, connection.id));
+  }
+
+  const messageId = await sendReply(tokens, {
+    threadId: email.gmailThreadId ?? "",
+    to: email.fromEmail,
+    subject: email.subject,
+    body: rawBody.body.trim(),
+  });
+
+  // Mark this queue item as replied
+  await db
+    .update(emailQueue)
+    .set({
+      status: "processed",
+      chosenAction: "reply",
+      processedAt: new Date(),
+    })
+    .where(eq(emailQueue.id, id));
+
+  return c.json({ ok: true, messageId });
 });
 
 // POST /queue/:id/promote — re-classify a briefing item for the action queue
