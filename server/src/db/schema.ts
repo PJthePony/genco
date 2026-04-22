@@ -173,6 +173,7 @@ export const userPreferences = pgTable(
     scanFrequency: text("scan_frequency").notNull().default("hourly"),
     urgentSmsEnabled: boolean("urgent_sms_enabled").notNull().default(false),
     phoneNumber: text("phone_number"),
+    lucaEmail: text("luca_email"), // CC'd when a draft suggests a meeting
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

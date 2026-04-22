@@ -662,6 +662,7 @@ export async function sendReply(
     subject: string;
     body: string;
     inReplyTo?: string;
+    cc?: string[];
   },
 ): Promise<string> {
   const { gmail } = getGmailClient(tokens);
@@ -671,6 +672,9 @@ export async function sendReply(
     `Subject: Re: ${opts.subject.replace(/^Re:\s*/i, "")}`,
     `Content-Type: text/plain; charset="UTF-8"`,
   ];
+  if (opts.cc && opts.cc.length > 0) {
+    headers.push(`Cc: ${opts.cc.join(", ")}`);
+  }
   if (opts.inReplyTo) {
     headers.push(`In-Reply-To: ${opts.inReplyTo}`);
     headers.push(`References: ${opts.inReplyTo}`);

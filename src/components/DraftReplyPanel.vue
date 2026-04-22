@@ -21,7 +21,7 @@ const emit = defineEmits([
   // All async ops use a resolve callback the parent must invoke
   'fetch-suggestions',       // (cardId, resolve(string[]))
   'generate-draft',          // (cardId, { direction?, previousDraft?, feedback?, voiceBucketId? }, resolve({ draft, voiceLabel, voiceSource, activeBucketId, availableBuckets }))
-  'send',                    // (cardId, body)     — actually sends to Gmail
+  'send',                    // (cardId, body, { cc: string[] })     — actually sends to Gmail
   'save-draft',              // (cardId, body)
   'send-imessage',           // (cardId, body)
   'closed',                  // user cancelled the flow
@@ -43,6 +43,11 @@ const voiceSource = ref(null)  // 'history' | 'bucket' | 'default'
 const activeBucketId = ref(null)
 const availableBuckets = ref([])
 const showVoiceMenu = ref(false)
+
+// Meeting detection → offer to CC Luca
+const suggestsMeeting = ref(false)
+const lucaEmail = ref(null)
+const ccLuca = ref(false)
 
 // Send / undo
 const pendingSend = ref(false)
@@ -104,6 +109,12 @@ async function generate(opts) {
       if (Array.isArray(res.availableBuckets)) {
         availableBuckets.value = res.availableBuckets
       }
+      if ('lucaEmail' in res) lucaEmail.value = res.lucaEmail || null
+      if ('suggestsMeeting' in res) {
+        suggestsMeeting.value = !!res.suggestsMeeting
+        // Default the checkbox to on when we detect a meeting AND Luca is configured
+        ccLuca.value = suggestsMeeting.value && !!lucaEmail.value
+      }
     }
     phase.value = 'review'
   } else {
@@ -125,6 +136,14 @@ async function refineDraft() {
     if (typeof res === 'object') {
       voiceLabel.value = res.voiceLabel || voiceLabel.value
       voiceSource.value = res.voiceSource || voiceSource.value
+      if ('lucaEmail' in res) lucaEmail.value = res.lucaEmail || lucaEmail.value
+      if ('suggestsMeeting' in res) {
+        const now = !!res.suggestsMeeting
+        // If the refined draft no longer suggests a meeting, auto-uncheck
+        if (!now) ccLuca.value = false
+        else if (!suggestsMeeting.value && lucaEmail.value) ccLuca.value = true
+        suggestsMeeting.value = now
+      }
     }
     feedback.value = ''
   }
@@ -184,10 +203,11 @@ function handleSendNow() {
     }
   }, 1000)
 
+  const cc = ccLuca.value && lucaEmail.value ? [lucaEmail.value] : []
   undoTimer = setTimeout(async () => {
     clearUndoTimers()
     try {
-      await emitAsync('send', props.cardId, body)
+      await emitAsync('send', props.cardId, body, { cc })
     } catch (err) {
       sendError.value = err?.message || 'Send failed'
       pendingSend.value = false
@@ -308,6 +328,14 @@ function handleSendImessage() {
         </button>
       </div>
 
+      <!-- Meeting → CC Luca toggle -->
+      <label v-if="!pendingSend && suggestsMeeting && lucaEmail" class="cc-luca-row">
+        <input type="checkbox" v-model="ccLuca" />
+        <span>
+          Looks like a meeting — <strong>CC Luca</strong> ({{ lucaEmail }}) so he can find a time
+        </span>
+      </label>
+
       <!-- Action row -->
       <div v-if="!pendingSend" class="actions-row">
         <button
@@ -331,7 +359,7 @@ function handleSendImessage() {
       <!-- Undo pending state -->
       <div v-else class="undo-row">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        Sending to {{ contactEmail || contactName }} in {{ undoSecondsLeft }}s…
+        Sending to {{ contactEmail || contactName }}{{ ccLuca && lucaEmail ? ` + ${lucaEmail}` : '' }} in {{ undoSecondsLeft }}s…
         <button class="btn-undo" @click="undoSend">Undo</button>
       </div>
 
@@ -566,6 +594,23 @@ function handleSendImessage() {
   flex-wrap: wrap;
   align-items: center;
 }
+
+.cc-luca-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.cc-luca-row input[type="checkbox"] { cursor: pointer; }
+.cc-luca-row strong { color: var(--color-text); font-weight: 600; }
 
 .btn-send {
   display: flex;

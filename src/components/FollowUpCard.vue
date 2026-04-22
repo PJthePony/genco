@@ -89,7 +89,7 @@ function onDraftClosed() {
       :can-send-imessage="true"
       @fetch-suggestions="(id, resolve) => emit('fetch-suggestions', id, resolve)"
       @generate-draft="(id, opts, resolve) => emit('generate-draft', id, opts, resolve)"
-      @send="(id, body) => emit('send', id, body)"
+      @send="(id, body, opts) => emit('send', id, body, opts)"
       @save-draft="(id, body) => emit('save-draft', id, body)"
       @send-imessage="(id, body) => emit('send-imessage', id, body)"
       @closed="onDraftClosed"

@@ -45,8 +45,8 @@ function handleSendMessage(id, body) {
   emit('send-imessage', id, body)
 }
 
-function handleSend(id, body) {
-  emit('send', id, body)
+function handleSend(id, body, opts) {
+  emit('send', id, body, opts)
 }
 
 function handleFetchSuggestions(id, resolve) {

@@ -1,6 +1,6 @@
 {
-  "id": "2e9b04f5-e921-401f-b2e2-37ce7c51f0a3",
-  "prevId": "cc3d887a-1acf-4860-9f7d-050f28aeb75e",
+  "id": "4b08784b-d36e-4739-ab49-a6c80e3352a2",
+  "prevId": "2e9b04f5-e921-401f-b2e2-37ce7c51f0a3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1406,6 +1406,12 @@
         },
         "phone_number": {
           "name": "phone_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "luca_email": {
+          "name": "luca_email",
           "type": "text",
           "primaryKey": false,
           "notNull": false

@@ -12,6 +12,7 @@ import {
   outboundMessages,
   userNoiseList,
   voiceProfiles,
+  userPreferences,
 } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { env } from "../config.js";
@@ -29,6 +30,7 @@ import {
   generateDirectionSuggestions,
   pickVoiceBucket,
 } from "../lib/claude.js";
+import { draftSuggestsMeeting } from "../lib/meeting.js";
 import { isNoiseEmail } from "../lib/noise.js";
 
 export const networkRoutes = new Hono<{ Variables: { user: AuthUser } }>();
@@ -519,6 +521,11 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     .set({ aiDraft: draft })
     .where(eq(followUpQueue.id, id));
 
+  const prefs = await db.query.userPreferences.findFirst({
+    where: eq(userPreferences.userId, user.sub),
+    columns: { lucaEmail: true },
+  });
+
   return c.json({
     ok: true,
     draft,
@@ -530,6 +537,8 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
       label: b.label,
       formalityScore: Number(b.formalityScore ?? 50),
     })),
+    suggestsMeeting: draftSuggestsMeeting(draft),
+    lucaEmail: prefs?.lucaEmail ?? null,
   });
 });
 
@@ -1185,10 +1194,14 @@ networkRoutes.post("/follow-ups/:id/send", async (c) => {
 
   const rawBody = (await c.req.json().catch(() => null)) as {
     body?: string;
+    cc?: string[];
   } | null;
   if (!rawBody?.body?.trim()) {
     return c.json({ error: "Email body is required" }, 400);
   }
+  const cc = Array.isArray(rawBody.cc)
+    ? rawBody.cc.filter((e) => typeof e === "string" && e.includes("@"))
+    : [];
 
   const followUp = await db.query.followUpQueue.findFirst({
     where: eq(followUpQueue.id, id),
@@ -1225,6 +1238,7 @@ networkRoutes.post("/follow-ups/:id/send", async (c) => {
     to: contact.email,
     subject: contact.lastSubject ?? "Checking in",
     body: rawBody.body.trim(),
+    cc,
   });
 
   // Update contact + follow-up state: P.J. just sent, now awaiting their reply

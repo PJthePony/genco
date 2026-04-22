@@ -170,11 +170,11 @@ export function useNetwork() {
     }
   }
 
-  async function sendFollowUp(followUpId, body) {
+  async function sendFollowUp(followUpId, body, opts = {}) {
     try {
       await api(`/network/follow-ups/${followUpId}/send`, {
         method: 'POST',
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({ body, cc: opts.cc || [] }),
       })
       // Remove from queue locally
       followUps.value = followUps.value.filter(f => f.id !== followUpId)

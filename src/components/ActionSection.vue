@@ -130,7 +130,7 @@ function handleSkip(cardId) {
             @override="$emit('override', $event)"
             @fetch-suggestions="(id, resolve) => $emit('fetch-suggestions', id, resolve)"
             @generate-draft="(id, opts, resolve) => $emit('generate-draft', id, opts, resolve)"
-            @send="(id, body) => $emit('send', id, body)"
+            @send="(id, body, opts) => $emit('send', id, body, opts)"
           />
         </div>
         <CompactRow

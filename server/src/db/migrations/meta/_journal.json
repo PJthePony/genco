@@ -71,6 +71,13 @@
       "when": 1776888155733,
       "tag": "0010_tearful_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776888633178,
+      "tag": "0011_nostalgic_silvermane",
+      "breakpoints": true
     }
   ]
 }

@@ -167,7 +167,7 @@ function cancelDraft() {
       :can-send-imessage="false"
       @fetch-suggestions="(id, resolve) => emit('fetch-suggestions', id, resolve)"
       @generate-draft="(id, opts, resolve) => emit('generate-draft', id, opts, resolve)"
-      @send="(id, body) => { draftOpen = false; emit('send', id, body) }"
+      @send="(id, body, opts) => { draftOpen = false; emit('send', id, body, opts) }"
       @closed="draftOpen = false"
     />
 

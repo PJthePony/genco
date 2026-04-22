@@ -243,11 +243,11 @@ export function useQueue() {
     }
   }
 
-  async function sendReply(cardId, body) {
+  async function sendReply(cardId, body, opts = {}) {
     try {
       await api(`/queue/${cardId}/send`, {
         method: 'POST',
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({ body, cc: opts.cc || [] }),
       })
       // Mark cleared locally
       const card = items.value.find(c => c.id === cardId)

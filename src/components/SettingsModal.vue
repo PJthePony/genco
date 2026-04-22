@@ -110,10 +110,17 @@ const FREQUENCY_OPTIONS = [
   { value: 'hourly', label: 'Every hour' },
 ]
 
+// ── Luca (calendar manager) CC address ──
+const lucaEmail = ref('')
+const savingLuca = ref(false)
+const lucaSaved = ref(false)
+let lucaSavedTimer = null
+
 async function loadPreferences() {
   try {
     const data = await api('/settings/preferences')
     scanFrequency.value = data.scanFrequency || '10min'
+    lucaEmail.value = data.lucaEmail || ''
   } catch (err) {
     console.error('Failed to load preferences:', err)
   }
@@ -132,6 +139,24 @@ async function updateScanFrequency(event) {
     console.error('Failed to save scan frequency:', err)
   } finally {
     savingFrequency.value = false
+  }
+}
+
+async function saveLucaEmail() {
+  savingLuca.value = true
+  lucaSaved.value = false
+  try {
+    await api('/settings/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ lucaEmail: lucaEmail.value.trim() || null }),
+    })
+    lucaSaved.value = true
+    if (lucaSavedTimer) clearTimeout(lucaSavedTimer)
+    lucaSavedTimer = setTimeout(() => { lucaSaved.value = false }, 2000)
+  } catch (err) {
+    console.error('Failed to save Luca email:', err)
+  } finally {
+    savingLuca.value = false
   }
 }
 
@@ -196,6 +221,25 @@ function timeAgo(timestamp) {
               <option v-for="opt in FREQUENCY_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-label">Luca (Calendar Manager)</div>
+          <div class="settings-row">
+            <span>Luca email</span>
+            <div class="settings-row-right">
+              <input
+                class="settings-input"
+                type="email"
+                v-model="lucaEmail"
+                placeholder="luca@example.com"
+                @blur="saveLucaEmail"
+                @keyup.enter="saveLucaEmail"
+              />
+              <span v-if="savingLuca" class="settings-value">Saving…</span>
+              <span v-else-if="lucaSaved" class="settings-value">Saved</span>
+            </div>
+          </div>
+          <p class="settings-hint">When a draft suggests a meeting, Genco will offer to CC this address so Luca can find a time.</p>
         </div>
         <div class="settings-group">
           <div class="settings-label">Daily Briefing Sources</div>
@@ -435,6 +479,28 @@ function timeAgo(timestamp) {
   transition: border-color var(--transition-fast);
   -webkit-appearance: none;
   appearance: none;
+}
+
+.settings-input {
+  font-size: 0.78rem;
+  font-family: inherit;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition-fast);
+  min-width: 200px;
+}
+
+.settings-input:focus { border-color: var(--color-accent); }
+
+.settings-hint {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin: 6px 0 0;
+  line-height: 1.4;
 }
 
 .settings-select:focus {

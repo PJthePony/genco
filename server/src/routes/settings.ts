@@ -24,6 +24,7 @@ settingsRoutes.get("/preferences", async (c) => {
 
   return c.json({
     scanFrequency: prefs?.scanFrequency ?? "10min",
+    lucaEmail: prefs?.lucaEmail ?? null,
   });
 });
 
@@ -32,11 +33,20 @@ settingsRoutes.put("/preferences", async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{
     scanFrequency?: string;
+    lucaEmail?: string | null;
   }>();
 
   const existing = await db.query.userPreferences.findFirst({
     where: eq(userPreferences.userId, user.sub),
   });
+
+  // Normalize lucaEmail: empty string → null
+  const normalizedLucaEmail =
+    body.lucaEmail === undefined
+      ? undefined
+      : body.lucaEmail?.trim()
+        ? body.lucaEmail.trim()
+        : null;
 
   if (existing) {
     await db
@@ -45,6 +55,9 @@ settingsRoutes.put("/preferences", async (c) => {
         ...(body.scanFrequency !== undefined && {
           scanFrequency: body.scanFrequency,
         }),
+        ...(normalizedLucaEmail !== undefined && {
+          lucaEmail: normalizedLucaEmail,
+        }),
         updatedAt: new Date(),
       })
       .where(eq(userPreferences.id, existing.id));
@@ -52,6 +65,7 @@ settingsRoutes.put("/preferences", async (c) => {
     await db.insert(userPreferences).values({
       userId: user.sub,
       scanFrequency: body.scanFrequency ?? "10min",
+      lucaEmail: normalizedLucaEmail ?? null,
     });
   }
 

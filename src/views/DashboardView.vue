@@ -124,11 +124,11 @@ async function handleSendMessage(id, body) {
   }
 }
 
-async function handleSendNow(id, body) {
+async function handleSendNow(id, body, opts = {}) {
   try {
-    await sendFollowUp(id, body)
+    await sendFollowUp(id, body, opts)
     refreshCount()
-    showToast('Sent')
+    showToast(opts.cc?.length ? 'Sent (Luca CC\'d)' : 'Sent')
   } catch (err) {
     showToast('Send failed')
   }
@@ -156,10 +156,10 @@ async function handleQueueGenerateDraft(id, opts, resolve) {
   }
 }
 
-async function handleQueueSend(id, body) {
+async function handleQueueSend(id, body, opts = {}) {
   try {
-    await sendQueueReply(id, body)
-    showToast('Sent')
+    await sendQueueReply(id, body, opts)
+    showToast(opts.cc?.length ? 'Sent (Luca CC\'d)' : 'Sent')
   } catch (err) {
     showToast('Send failed')
   }

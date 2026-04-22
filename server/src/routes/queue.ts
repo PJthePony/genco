@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, desc, isNotNull, gte, or, inArray, count, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { emailQueue, gmailConnections, networkContacts, followUpQueue, voiceProfiles } from "../db/schema.js";
+import { emailQueue, gmailConnections, networkContacts, followUpQueue, voiceProfiles, userPreferences } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
 import { archiveMessage, unarchiveMessage, refreshAccessToken, sendReply, fetchSentEmailsToContact, type GoogleTokens } from "../lib/gmail.js";
@@ -13,6 +13,7 @@ import {
   pickVoiceBucket,
   type VoiceContext,
 } from "../lib/claude.js";
+import { draftSuggestsMeeting } from "../lib/meeting.js";
 import { senderSummaries, feedbackLog } from "../db/schema.js";
 
 const VALID_ACTIONS = [
@@ -611,6 +612,13 @@ queueRoutes.post("/:id/draft", async (c) => {
     feedback: parsed.data.feedback ?? null,
   });
 
+  // Meeting detection: does the draft suggest a meeting? If yes and the
+  // user has a Luca email configured, the frontend offers a "CC Luca" toggle.
+  const prefs = await db.query.userPreferences.findFirst({
+    where: eq(userPreferences.userId, user.sub),
+    columns: { lucaEmail: true },
+  });
+
   return c.json({
     draft,
     voiceLabel,
@@ -621,6 +629,8 @@ queueRoutes.post("/:id/draft", async (c) => {
       label: b.label,
       formalityScore: Number(b.formalityScore ?? 50),
     })),
+    suggestsMeeting: draftSuggestsMeeting(draft),
+    lucaEmail: prefs?.lucaEmail ?? null,
   });
 });
 
@@ -669,10 +679,14 @@ queueRoutes.post("/:id/send", async (c) => {
 
   const rawBody = (await c.req.json().catch(() => null)) as {
     body?: string;
+    cc?: string[];
   } | null;
   if (!rawBody?.body?.trim()) {
     return c.json({ error: "Reply body is required" }, 400);
   }
+  const cc = Array.isArray(rawBody.cc)
+    ? rawBody.cc.filter((e) => typeof e === "string" && e.includes("@"))
+    : [];
 
   const email = await db.query.emailQueue.findFirst({
     where: and(eq(emailQueue.id, id), eq(emailQueue.userId, user.sub)),
@@ -701,6 +715,7 @@ queueRoutes.post("/:id/send", async (c) => {
     to: email.fromEmail,
     subject: email.subject,
     body: rawBody.body.trim(),
+    cc,
   });
 
   // Mark this queue item as replied
