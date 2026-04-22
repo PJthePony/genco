@@ -81,7 +81,7 @@ async function scanAllAccounts(): Promise<void> {
           const result = await detectFollowUps(conn.userId);
           if (result.inserted > 0) {
             console.log(
-              `[Scheduler] Follow-up detection for ${conn.gmailAddress}: ${result.inserted} new (${result.ballInYourCourt} ball-in-court, ${result.wentCold} went-cold, ${result.dateComingUp} date-coming-up)`,
+              `[Scheduler] Follow-up detection for ${conn.gmailAddress}: ${result.inserted} new (${result.wentCold} awaiting-reply, ${result.dateComingUp} date-coming-up)`,
             );
           }
         } catch (err) {

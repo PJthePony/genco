@@ -8,7 +8,6 @@ import {
 
 export interface FollowUpDetectionResult {
   inserted: number;
-  ballInYourCourt: number;
   wentCold: number;
   dateComingUp: number;
 }
@@ -17,16 +16,14 @@ export interface FollowUpDetectionResult {
  * Detect follow-up opportunities for a user's network contacts.
  * Pure SQL queries — no AI calls. Designed to run daily.
  *
- * Three detection rules:
- * 1. Ball in your court — they sent last, you haven't replied
- * 2. Went cold — no activity in 14+ days, thread wasn't concluded
- * 3. Date coming up — a personal fact has a relevant date within 7 days
+ * Two detection rules:
+ * 1. Awaiting reply (stored as "went_cold") — P.J. sent last, no response in 4+ days
+ * 2. Date coming up — a personal fact has a relevant date within 7 days
  */
 export async function detectFollowUps(
   userId: string,
 ): Promise<FollowUpDetectionResult> {
   let inserted = 0;
-  let ballInYourCourt = 0;
   let wentCold = 0;
   let dateComingUp = 0;
 
@@ -36,7 +33,7 @@ export async function detectFollowUps(
   });
 
   if (contacts.length === 0) {
-    return { inserted: 0, ballInYourCourt: 0, wentCold: 0, dateComingUp: 0 };
+    return { inserted: 0, wentCold: 0, dateComingUp: 0 };
   }
 
   // Get all existing pending/snoozed follow-ups to avoid duplicates
@@ -54,44 +51,16 @@ export async function detectFollowUps(
   );
 
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const fourDaysAgo = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000);
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  // ── Rule 1: Ball in your court ──────────────────────────────────────────
-  // They sent the last email, you haven't replied
-  for (const contact of contacts) {
-    if (
-      contact.lastDirection === "received" &&
-      contact.threadStatus === "awaiting_your_reply" &&
-      !existingSet.has(`${contact.id}:ball_in_your_court`)
-    ) {
-      try {
-        await db.insert(followUpQueue).values({
-          networkContactId: contact.id,
-          reason: "ball_in_your_court",
-          suggestedAction: "reply",
-          contextSnapshot: contact.lastSubject
-            ? `${contact.displayName} is waiting on your reply to "${contact.lastSubject}"`
-            : `${contact.displayName} sent you an email you haven't replied to`,
-        });
-        inserted++;
-        ballInYourCourt++;
-      } catch (err) {
-        console.warn(
-          `Failed to insert ball_in_your_court follow-up for ${contact.email}:`,
-          err,
-        );
-      }
-    }
-  }
-
-  // ── Rule 2: Went cold ──────────────────────────────────────────────────
-  // Last contact was 30+ days ago, thread wasn't concluded
+  // ── Rule 1: Awaiting reply ─────────────────────────────────────────────
+  // P.J. sent last, they haven't replied in 4+ days
   for (const contact of contacts) {
     if (
       contact.lastContactAt &&
-      contact.lastContactAt < thirtyDaysAgo &&
-      contact.threadStatus !== "conversation_ended" &&
+      contact.lastContactAt < fourDaysAgo &&
+      contact.threadStatus === "awaiting_their_reply" &&
       !existingSet.has(`${contact.id}:went_cold`)
     ) {
       const daysSince = Math.floor(
@@ -103,16 +72,16 @@ export async function detectFollowUps(
         await db.insert(followUpQueue).values({
           networkContactId: contact.id,
           reason: "went_cold",
-          suggestedAction: "check_in",
+          suggestedAction: "nudge",
           contextSnapshot: contact.lastSubject
-            ? `Last exchange with ${contact.displayName} was ${daysSince} days ago: "${contact.lastSubject}"`
-            : `Haven't been in touch with ${contact.displayName} for ${daysSince} days`,
+            ? `${contact.displayName} hasn't replied in ${daysSince}d — last thread: "${contact.lastSubject}"`
+            : `${contact.displayName} hasn't replied in ${daysSince}d`,
         });
         inserted++;
         wentCold++;
       } catch (err) {
         console.warn(
-          `Failed to insert went_cold follow-up for ${contact.email}:`,
+          `Failed to insert awaiting-reply follow-up for ${contact.email}:`,
           err,
         );
       }
@@ -165,5 +134,5 @@ export async function detectFollowUps(
     }
   }
 
-  return { inserted, ballInYourCourt, wentCold, dateComingUp };
+  return { inserted, wentCold, dateComingUp };
 }

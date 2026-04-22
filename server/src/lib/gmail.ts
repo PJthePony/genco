@@ -451,6 +451,47 @@ export async function createDraft(
   return draft.data.id ?? "";
 }
 
+/**
+ * Send a reply directly into an existing thread (no draft).
+ * Mirrors createDraft but calls messages.send.
+ */
+export async function sendReply(
+  tokens: GoogleTokens,
+  opts: {
+    threadId: string;
+    to: string;
+    subject: string;
+    body: string;
+    inReplyTo?: string;
+  },
+): Promise<string> {
+  const { gmail } = getGmailClient(tokens);
+
+  const headers = [
+    `To: ${opts.to}`,
+    `Subject: Re: ${opts.subject.replace(/^Re:\s*/i, "")}`,
+    `Content-Type: text/plain; charset="UTF-8"`,
+  ];
+  if (opts.inReplyTo) {
+    headers.push(`In-Reply-To: ${opts.inReplyTo}`);
+    headers.push(`References: ${opts.inReplyTo}`);
+  }
+
+  const raw = Buffer.from(
+    headers.join("\r\n") + "\r\n\r\n" + opts.body,
+  ).toString("base64url");
+
+  const sent = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: {
+      raw,
+      threadId: opts.threadId,
+    },
+  });
+
+  return sent.data.id ?? "";
+}
+
 // ── Unsubscribe Helpers ─────────────────────────────────────────────────────
 
 export interface UnsubscribeResult {

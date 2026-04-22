@@ -23,7 +23,7 @@ const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, overrideAction, generateDraft: generateReplyDraft } = useGroupedQueue()
 const { items: digestItems, fetchDigest, promoteItem } = useDigest()
-const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
+const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, fetchDirectionSuggestions, sendFollowUp, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
 const { markSeen, refreshCount, startPolling, stopPolling } = useUnread()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
@@ -83,11 +83,23 @@ async function handleFollowUpNoise(id) {
   }
 }
 
-async function handleFollowUpDraft(id) {
+async function handleFetchSuggestions(id, resolve) {
   try {
-    await generateDraft(id)
+    const opts = await fetchDirectionSuggestions(id)
+    resolve(opts)
+  } catch (err) {
+    showToast('Could not load suggestions')
+    resolve([])
+  }
+}
+
+async function handleGenerateDraft(id, opts, resolve) {
+  try {
+    const draft = await generateDraft(id, opts)
+    resolve(draft)
   } catch (err) {
     showToast('Draft generation failed')
+    resolve(null)
   }
 }
 
@@ -108,6 +120,16 @@ async function handleSendMessage(id, body) {
     showToast('Message queued for sending')
   } catch (err) {
     showToast('Failed to queue message')
+  }
+}
+
+async function handleSendNow(id, body) {
+  try {
+    await sendFollowUp(id, body)
+    refreshCount()
+    showToast('Sent')
+  } catch (err) {
+    showToast('Send failed')
   }
 }
 
@@ -544,12 +566,14 @@ onUnmounted(() => {
         :items="followUps"
         :scanning="scanningThreads"
         :scan-progress="scanProgress"
-        @draft="handleFollowUpDraft"
         @snooze="handleFollowUpSnooze"
         @dismiss="handleFollowUpDismiss"
         @noise="handleFollowUpNoise"
         @save-draft="handleSaveDraft"
         @send-imessage="handleSendMessage"
+        @send="handleSendNow"
+        @fetch-suggestions="handleFetchSuggestions"
+        @generate-draft="handleGenerateDraft"
         @manage-network="networkModalOpen = true"
       />
 

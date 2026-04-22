@@ -885,6 +885,9 @@ export async function generateFollowUpDraft(opts: {
   contextSnapshot: string;
   personalFacts: string[];
   lastSubject: string | null;
+  direction?: string | null;
+  previousDraft?: string | null;
+  feedback?: string | null;
 }): Promise<string> {
   const systemParts = [
     `You are drafting a proactive outreach email for P.J. Tanzillo.`,
@@ -923,10 +926,26 @@ export async function generateFollowUpDraft(opts: {
     }
   }
 
+  if (opts.direction) {
+    userParts.push(``);
+    userParts.push(`P.J.'S DIRECTION FOR THIS REPLY: ${opts.direction}`);
+  }
+
   userParts.push(``);
-  userParts.push(
-    `Write the email now. Just the body — no subject line, no greeting header, no signature block.`,
-  );
+  if (opts.previousDraft && opts.feedback) {
+    userParts.push(`PREVIOUS DRAFT:`);
+    userParts.push(opts.previousDraft);
+    userParts.push(``);
+    userParts.push(`P.J.'S FEEDBACK ON THE DRAFT: ${opts.feedback}`);
+    userParts.push(``);
+    userParts.push(
+      `Rewrite the email applying the feedback. Just the body — no subject line, no greeting header, no signature block.`,
+    );
+  } else {
+    userParts.push(
+      `Write the email now. Just the body — no subject line, no greeting header, no signature block.`,
+    );
+  }
 
   const userMessage = userParts.join("\n");
 
@@ -957,4 +976,63 @@ export async function generateFollowUpDraft(opts: {
   }
 
   throw lastError ?? new Error("Failed to generate follow-up draft");
+}
+
+/**
+ * Generate 3-4 short direction chips P.J. can pick before drafting.
+ * Each chip is a short imperative phrase, e.g. "Politely decline".
+ */
+export async function generateDirectionSuggestions(opts: {
+  contactName: string;
+  reason: string;
+  contextSnapshot: string;
+  lastSubject: string | null;
+  senderSummary: string | null;
+}): Promise<string[]> {
+  const system = [
+    `You suggest short directions for an email follow-up that P.J. is about to draft.`,
+    `Return 3-4 distinct, concrete options that fit the context.`,
+    `Each option is a short imperative phrase (3-7 words). No leading verbs like "Reply"; just the intent. Examples: "Politely decline, suggest next month", "Confirm and propose Tuesday 2pm", "Ask what timeline they need".`,
+    `Output format: one option per line, no numbering, no quotes, no extra commentary.`,
+  ].join("\n");
+
+  const userParts = [
+    `CONTACT: ${opts.contactName}`,
+    `REASON: ${opts.reason.replace(/_/g, " ")}`,
+    `CONTEXT: ${opts.contextSnapshot}`,
+  ];
+  if (opts.lastSubject) userParts.push(`THREAD: ${opts.lastSubject}`);
+  if (opts.senderSummary) {
+    userParts.push(``);
+    userParts.push(`RELATIONSHIP:`);
+    userParts.push(opts.senderSummary);
+  }
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 500));
+      }
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 256,
+        system,
+        messages: [{ role: "user", content: userParts.join("\n") }],
+      });
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text",
+      );
+      const text = textBlock?.text ?? "";
+      const lines = text
+        .split("\n")
+        .map((l) => l.replace(/^[-*\d.\s]+/, "").trim())
+        .filter((l) => l.length > 0 && l.length < 80);
+      return lines.slice(0, 4);
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) throw err;
+    }
+  }
+  throw lastError ?? new Error("Failed to generate direction suggestions");
 }

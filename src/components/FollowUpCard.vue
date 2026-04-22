@@ -6,13 +6,27 @@ const props = defineProps({
   expanded: Boolean,
 })
 
-const emit = defineEmits(['expand', 'draft', 'snooze', 'dismiss', 'noise', 'act', 'save-draft', 'send-imessage', 'open-email'])
+const emit = defineEmits([
+  'expand', 'snooze', 'dismiss', 'noise',
+  'fetch-suggestions', 'generate-draft', 'send', 'save-draft', 'send-imessage',
+])
 
 const showSnoozeOptions = ref(false)
+
+// Draft flow state machine: 'idle' | 'direction' | 'drafting' | 'review'
+const phase = ref('idle')
+const directionOptions = ref([])
+const loadingSuggestions = ref(false)
+const customDirection = ref('')
+const pickedDirection = ref('')
 const draftText = ref('')
-const editingDraft = ref(false)
+const feedback = ref('')
+const refining = ref(false)
 const savingDraft = ref(false)
 const sendingMessage = ref(false)
+const sending = ref(false)
+const confirmingSend = ref(false)
+let confirmTimer = null
 
 const hasPhone = computed(() => !!props.card.contactPhone)
 
@@ -21,9 +35,80 @@ const gmailUrl = computed(() => {
   return `https://mail.google.com/mail/u/0/#all/${props.card.gmailThreadId}`
 })
 
+const draftButtonLabel = computed(() => {
+  if (props.card.aiDraft && phase.value === 'idle') return 'View draft'
+  return props.card.suggestedAction === 'nudge' ? 'Draft check-in' : 'Draft reply'
+})
+
 function truncate(text, max) {
   if (!text || text.length <= max) return text
   return text.slice(0, max).trimEnd() + '...'
+}
+
+async function startDraft() {
+  // If a draft already exists, jump straight to review
+  if (props.card.aiDraft) {
+    draftText.value = props.card.aiDraft
+    phase.value = 'review'
+    return
+  }
+  phase.value = 'direction'
+  if (directionOptions.value.length === 0) {
+    loadingSuggestions.value = true
+    const opts = await emitAsync('fetch-suggestions', props.card.id)
+    directionOptions.value = opts || []
+    loadingSuggestions.value = false
+  }
+}
+
+function pickDirection(text) {
+  pickedDirection.value = text
+  customDirection.value = ''
+  generate(text)
+}
+
+function pickCustom() {
+  if (!customDirection.value.trim()) return
+  pickedDirection.value = customDirection.value.trim()
+  generate(pickedDirection.value)
+}
+
+function pickNoDirection() {
+  pickedDirection.value = ''
+  generate('')
+}
+
+async function generate(direction) {
+  phase.value = 'drafting'
+  const draft = await emitAsync('generate-draft', props.card.id, { direction })
+  if (draft) {
+    draftText.value = draft
+    phase.value = 'review'
+  } else {
+    phase.value = 'direction'
+  }
+}
+
+async function refineDraft() {
+  if (!feedback.value.trim()) return
+  refining.value = true
+  const draft = await emitAsync('generate-draft', props.card.id, {
+    previousDraft: draftText.value,
+    feedback: feedback.value.trim(),
+  })
+  if (draft) {
+    draftText.value = draft
+    feedback.value = ''
+  }
+  refining.value = false
+}
+
+function cancelDraft() {
+  phase.value = 'idle'
+  pickedDirection.value = ''
+  customDirection.value = ''
+  feedback.value = ''
+  clearConfirm()
 }
 
 function handleSaveDraft() {
@@ -38,23 +123,37 @@ function handleSendMessage() {
   emit('send-imessage', props.card.id, draftText.value.trim())
 }
 
-function handleDraft() {
-  if (props.card.aiDraft) {
-    draftText.value = props.card.aiDraft
-    editingDraft.value = !editingDraft.value
-  } else {
-    emit('draft', props.card.id)
+function handleSendNow() {
+  if (!draftText.value.trim()) return
+  if (!confirmingSend.value) {
+    confirmingSend.value = true
+    confirmTimer = setTimeout(() => { confirmingSend.value = false }, 3000)
+    return
   }
+  clearConfirm()
+  sending.value = true
+  emit('send', props.card.id, draftText.value.trim())
 }
 
-function onDraftReady() {
-  if (props.card.aiDraft && !editingDraft.value) {
-    draftText.value = props.card.aiDraft
-    editingDraft.value = true
+function clearConfirm() {
+  if (confirmTimer) {
+    clearTimeout(confirmTimer)
+    confirmTimer = null
   }
+  confirmingSend.value = false
 }
 
-defineExpose({ onDraftReady })
+// Bridge: parent emits return undefined; we wrap with a promise resolved by parent
+// via a callback ref pattern would be heavy. Instead, parent passes a helper down
+// — but simpler: emit and parent assigns result back via card props.
+// Here we expose an imperative helper the parent can call after handlers run.
+async function emitAsync(eventName, ...args) {
+  return new Promise((resolve) => {
+    emit(eventName, ...args, resolve)
+  })
+}
+
+defineExpose({})
 </script>
 
 <template>
@@ -93,38 +192,96 @@ defineExpose({ onDraftReady })
 
     <div class="expanded-context">{{ card.contextSnapshot }}</div>
 
-    <!-- Draft section -->
-    <div v-if="editingDraft || card.drafting" class="draft-section">
-      <div v-if="card.drafting" class="draft-loading">
+    <!-- Phase: direction picker -->
+    <div v-if="phase === 'direction'" class="draft-section">
+      <div class="phase-label">Pick a direction:</div>
+      <div v-if="loadingSuggestions" class="draft-loading">
         <span class="draft-spinner"></span>
-        Drafting...
+        Loading suggestions...
       </div>
-      <div v-else-if="editingDraft" class="draft-content">
-        <textarea
-          v-model="draftText"
-          class="draft-textarea"
-          rows="4"
-          placeholder="Your follow-up message..."
-        ></textarea>
-        <div class="draft-actions">
-          <button class="btn-draft-save" @click="handleSaveDraft" :disabled="savingDraft || sendingMessage || !draftText.trim()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-            {{ savingDraft ? 'Saving...' : 'Save to Gmail Drafts' }}
-          </button>
-          <button v-if="hasPhone" class="btn-draft-imessage" @click="handleSendMessage" :disabled="savingDraft || sendingMessage || !draftText.trim()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            {{ sendingMessage ? 'Sending...' : 'Send as iMessage' }}
-          </button>
-          <button class="btn-draft-cancel" @click="editingDraft = false" :disabled="savingDraft || sendingMessage">Cancel</button>
+      <template v-else>
+        <div class="direction-chips">
+          <button
+            v-for="opt in directionOptions"
+            :key="opt"
+            class="chip"
+            @click="pickDirection(opt)"
+          >{{ opt }}</button>
         </div>
+        <div class="custom-direction">
+          <input
+            v-model="customDirection"
+            class="direction-input"
+            placeholder="Other — type your own…"
+            @keyup.enter="pickCustom"
+          />
+          <button class="btn-direction-go" @click="pickCustom" :disabled="!customDirection.trim()">Go</button>
+        </div>
+        <div class="direction-footer">
+          <button class="btn-link" @click="pickNoDirection">Skip — let AI decide</button>
+          <button class="btn-link" @click="cancelDraft">Cancel</button>
+        </div>
+      </template>
+    </div>
+
+    <!-- Phase: drafting -->
+    <div v-else-if="phase === 'drafting'" class="draft-section">
+      <div class="draft-loading">
+        <span class="draft-spinner"></span>
+        Drafting{{ pickedDirection ? `: ${pickedDirection}` : '' }}…
       </div>
     </div>
 
-    <!-- Action row -->
-    <div class="expanded-actions">
-      <button class="btn-action btn-draft" @click="handleDraft" :disabled="card.drafting">
+    <!-- Phase: review -->
+    <div v-else-if="phase === 'review'" class="draft-section">
+      <textarea
+        v-model="draftText"
+        class="draft-textarea"
+        rows="5"
+        placeholder="Your follow-up message..."
+      ></textarea>
+
+      <!-- Refine input -->
+      <div class="refine-row">
+        <input
+          v-model="feedback"
+          class="refine-input"
+          placeholder="Refine: shorter, less formal, mention the Tuesday call…"
+          :disabled="refining"
+          @keyup.enter="refineDraft"
+        />
+        <button class="btn-refine" @click="refineDraft" :disabled="refining || !feedback.trim()">
+          {{ refining ? 'Refining…' : 'Refine' }}
+        </button>
+      </div>
+
+      <div class="draft-actions">
+        <button
+          class="btn-send-now"
+          :class="{ confirming: confirmingSend }"
+          @click="handleSendNow"
+          :disabled="sending || refining || !draftText.trim()"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          {{ sending ? 'Sending…' : (confirmingSend ? `Confirm send to ${card.contactEmail}` : 'Send now') }}
+        </button>
+        <button class="btn-draft-save" @click="handleSaveDraft" :disabled="savingDraft || sendingMessage || sending || !draftText.trim()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          {{ savingDraft ? 'Saving…' : 'Save to Drafts' }}
+        </button>
+        <button v-if="hasPhone" class="btn-draft-imessage" @click="handleSendMessage" :disabled="savingDraft || sendingMessage || sending || !draftText.trim()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          {{ sendingMessage ? 'Sending…' : 'iMessage' }}
+        </button>
+        <button class="btn-draft-cancel" @click="cancelDraft" :disabled="savingDraft || sendingMessage || sending">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Action row (only when no draft phase active) -->
+    <div v-if="phase === 'idle'" class="expanded-actions">
+      <button class="btn-action btn-draft" @click="startDraft" :disabled="card.drafting">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        {{ card.aiDraft ? 'View draft' : (card.suggestedAction === 'nudge' ? 'Draft nudge' : 'Draft reply') }}
+        {{ draftButtonLabel }}
       </button>
 
       <div class="snooze-wrapper">
@@ -261,8 +418,7 @@ defineExpose({ onDraftReady })
   white-space: nowrap;
 }
 
-.tag-ball_in_your_court { background: var(--color-accent-soft); color: var(--color-accent); }
-.tag-went_cold { background: var(--color-blue-soft); color: var(--color-blue); }
+.tag-went_cold { background: var(--color-accent-soft); color: var(--color-accent); }
 .tag-date_coming_up { background: var(--color-success-soft); color: var(--color-success); }
 
 .compact-approve {
@@ -416,6 +572,162 @@ defineExpose({ onDraftReady })
 /* ── Draft section ── */
 .draft-section {
   margin: 8px 0 10px;
+}
+
+.phase-label {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+.direction-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.chip {
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-family: inherit;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.chip:hover {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.custom-direction {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.direction-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-family: inherit;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.direction-input:focus {
+  outline: none;
+  border-color: var(--color-accent-border);
+}
+
+.btn-direction-go {
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-direction-go:disabled { opacity: 0.4; cursor: default; }
+
+.direction-footer {
+  display: flex;
+  gap: 12px;
+  font-size: 0.68rem;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-link:hover { color: var(--color-text); }
+
+.refine-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.refine-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-family: inherit;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.refine-input:focus {
+  outline: none;
+  border-color: var(--color-accent-border);
+}
+
+.btn-refine {
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.btn-refine:hover:not(:disabled) {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+}
+
+.btn-refine:disabled { opacity: 0.4; cursor: default; }
+
+.btn-send-now {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.btn-send-now:hover:not(:disabled) { filter: brightness(1.05); }
+.btn-send-now:disabled { opacity: 0.4; cursor: default; }
+
+.btn-send-now.confirming {
+  background: var(--color-danger, #a83a4a);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
 }
 
 .draft-loading {

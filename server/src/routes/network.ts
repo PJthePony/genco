@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, or, lte, sql } from "drizzle-orm";
+import { eq, ne, and, or, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import {
@@ -18,11 +18,13 @@ import {
   fetchSenderHistory,
   refreshAccessToken,
   createDraft,
+  sendReply,
   type GoogleTokens,
 } from "../lib/gmail.js";
 import {
   buildSenderSummaryFromHistory,
   generateFollowUpDraft,
+  generateDirectionSuggestions,
 } from "../lib/claude.js";
 import { isNoiseEmail } from "../lib/noise.js";
 
@@ -192,13 +194,15 @@ networkRoutes.get("/follow-ups", async (c) => {
   const contactMap = new Map(contacts.map((c) => [c.id, c]));
   const contactIds = contacts.map((c) => c.id);
 
-  // Get pending + due snoozed follow-ups
+  // Get pending + due snoozed follow-ups. Exclude legacy ball_in_your_court
+  // rows from the old rule — they're replaced by the main email queue.
   const items = await db.query.followUpQueue.findMany({
     where: and(
       sql`${followUpQueue.networkContactId} IN (${sql.join(
         contactIds.map((id) => sql`${id}::uuid`),
         sql`, `,
       )})`,
+      ne(followUpQueue.reason, "ball_in_your_court"),
       or(
         eq(followUpQueue.status, "pending"),
         and(
@@ -357,7 +361,8 @@ networkRoutes.post("/follow-ups/:id/action", async (c) => {
   return c.json({ ok: true });
 });
 
-// POST /network/follow-ups/:id/draft — generate AI draft on demand
+// POST /network/follow-ups/:id/draft — generate or refine AI draft.
+// Body: { direction?, previousDraft?, feedback? }
 networkRoutes.post("/follow-ups/:id/draft", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
@@ -366,28 +371,25 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     return c.json({ error: "Invalid follow-up ID" }, 400);
   }
 
-  // Get the follow-up
+  const body = (await c.req.json().catch(() => ({}))) as {
+    direction?: string;
+    previousDraft?: string;
+    feedback?: string;
+  };
+
   const followUp = await db.query.followUpQueue.findFirst({
     where: eq(followUpQueue.id, id),
   });
+  if (!followUp) return c.json({ error: "Follow-up not found" }, 404);
 
-  if (!followUp) {
-    return c.json({ error: "Follow-up not found" }, 404);
-  }
-
-  // Get the contact
   const contact = await db.query.networkContacts.findFirst({
     where: and(
       eq(networkContacts.id, followUp.networkContactId),
       eq(networkContacts.userId, user.sub),
     ),
   });
+  if (!contact) return c.json({ error: "Contact not found" }, 404);
 
-  if (!contact) {
-    return c.json({ error: "Contact not found" }, 404);
-  }
-
-  // Get sender summary
   const summary = await db.query.senderSummaries.findFirst({
     where: and(
       eq(senderSummaries.userId, user.sub),
@@ -395,7 +397,6 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     ),
   });
 
-  // Get personal facts
   const facts = await db.query.contactContext.findMany({
     where: and(
       eq(contactContext.networkContactId, contact.id),
@@ -413,15 +414,57 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     contextSnapshot: followUp.contextSnapshot ?? "",
     personalFacts: facts.map((f) => f.fact),
     lastSubject: contact.lastSubject ?? null,
+    direction: body.direction?.trim() || null,
+    previousDraft: body.previousDraft?.trim() || null,
+    feedback: body.feedback?.trim() || null,
   });
 
-  // Save the draft on the follow-up record
   await db
     .update(followUpQueue)
     .set({ aiDraft: draft })
     .where(eq(followUpQueue.id, id));
 
   return c.json({ ok: true, draft });
+});
+
+// POST /network/follow-ups/:id/suggestions — 3-4 direction chips for the draft
+networkRoutes.post("/follow-ups/:id/suggestions", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: "Invalid follow-up ID" }, 400);
+  }
+
+  const followUp = await db.query.followUpQueue.findFirst({
+    where: eq(followUpQueue.id, id),
+  });
+  if (!followUp) return c.json({ error: "Follow-up not found" }, 404);
+
+  const contact = await db.query.networkContacts.findFirst({
+    where: and(
+      eq(networkContacts.id, followUp.networkContactId),
+      eq(networkContacts.userId, user.sub),
+    ),
+  });
+  if (!contact) return c.json({ error: "Contact not found" }, 404);
+
+  const summary = await db.query.senderSummaries.findFirst({
+    where: and(
+      eq(senderSummaries.userId, user.sub),
+      eq(senderSummaries.senderEmail, contact.email),
+    ),
+  });
+
+  const suggestions = await generateDirectionSuggestions({
+    contactName: contact.displayName,
+    reason: followUp.reason,
+    contextSnapshot: followUp.contextSnapshot ?? "",
+    lastSubject: contact.lastSubject ?? null,
+    senderSummary: summary?.summary ?? null,
+  });
+
+  return c.json({ ok: true, suggestions });
 });
 
 // ── Seed Flow ───────────────────────────────────────────────────────────────
@@ -775,8 +818,6 @@ networkRoutes.post("/scan-threads", async (c) => {
         let totalFetched = 0;
         let followUpsCreated = 0;
         const now = Date.now();
-        const twoDaysAgo = now - 2 * 24 * 60 * 60 * 1000;
-        const fourteenDaysAgo = now - 14 * 24 * 60 * 60 * 1000;
 
         send("progress", {
           fetched: 0,
@@ -951,41 +992,10 @@ networkRoutes.post("/scan-threads", async (c) => {
                 })
                 .where(eq(networkContacts.id, contact.id));
 
-              // Determine follow-up reason
-              let reason: string;
-              let suggestedAction: string;
-              let contextSnapshot: string;
-
-              if (lastDate > fourteenDaysAgo) {
-                // Recent enough to be "ball in your court"
-                reason = "ball_in_your_court";
-                suggestedAction = "reply";
-                const daysAgo = Math.floor((now - lastDate) / (24 * 60 * 60 * 1000));
-                contextSnapshot = `${contact.displayName} emailed you ${daysAgo}d ago: "${subject}"`;
-              } else {
-                // Older than 14 days — went cold
-                reason = "went_cold";
-                suggestedAction = "nudge";
-                const daysAgo = Math.floor((now - lastDate) / (24 * 60 * 60 * 1000));
-                contextSnapshot = `Last heard from ${contact.displayName} ${daysAgo}d ago: "${subject}"`;
-              }
-
-              // Only if older than 2 days (don't flag very recent emails)
-              if (lastDate > twoDaysAgo) continue;
-
-              // Skip if follow-up already exists
-              const key = `${contact.id}:${reason}`;
-              if (existingFollowUpKeys.has(key)) continue;
-
-              // Insert follow-up
-              await db.insert(followUpQueue).values({
-                networkContactId: contact.id,
-                reason,
-                suggestedAction,
-                contextSnapshot,
-              });
-              existingFollowUpKeys.add(key);
-              followUpsCreated++;
+              // Contact-sent-last threads surface in the main email queue.
+              // The Follow Up section only tracks threads where P.J. sent
+              // last and is awaiting their reply — handled by detectFollowUps
+              // on scan and by the daily cron. Nothing to insert here.
             }
 
             totalFetched += batch.length;
@@ -1055,6 +1065,79 @@ networkRoutes.post("/scan-threads", async (c) => {
       Connection: "keep-alive",
     },
   });
+});
+
+// ── Send Follow-Up Email Directly ───────────────────────────────────────────
+
+networkRoutes.post("/follow-ups/:id/send", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: "Invalid follow-up ID" }, 400);
+  }
+
+  const rawBody = (await c.req.json().catch(() => null)) as {
+    body?: string;
+  } | null;
+  if (!rawBody?.body?.trim()) {
+    return c.json({ error: "Email body is required" }, 400);
+  }
+
+  const followUp = await db.query.followUpQueue.findFirst({
+    where: eq(followUpQueue.id, id),
+  });
+  if (!followUp) return c.json({ error: "Follow-up not found" }, 404);
+
+  const contact = await db.query.networkContacts.findFirst({
+    where: and(
+      eq(networkContacts.id, followUp.networkContactId),
+      eq(networkContacts.userId, user.sub),
+    ),
+  });
+  if (!contact) return c.json({ error: "Contact not found" }, 404);
+
+  const connection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, user.sub),
+  });
+  if (!connection) return c.json({ error: "Gmail not connected" }, 422);
+
+  let tokens = connection.googleTokens as GoogleTokens;
+  if (
+    tokens.expiry_date &&
+    tokens.expiry_date < Date.now() + 5 * 60 * 1000
+  ) {
+    tokens = await refreshAccessToken(tokens);
+    await db
+      .update(gmailConnections)
+      .set({ googleTokens: tokens, updatedAt: new Date() })
+      .where(eq(gmailConnections.id, connection.id));
+  }
+
+  const messageId = await sendReply(tokens, {
+    threadId: contact.gmailThreadId ?? "",
+    to: contact.email,
+    subject: contact.lastSubject ?? "Checking in",
+    body: rawBody.body.trim(),
+  });
+
+  // Update contact + follow-up state: P.J. just sent, now awaiting their reply
+  const now = new Date();
+  await db
+    .update(networkContacts)
+    .set({
+      lastContactAt: now,
+      lastDirection: "sent",
+      threadStatus: "awaiting_their_reply",
+    })
+    .where(eq(networkContacts.id, contact.id));
+
+  await db
+    .update(followUpQueue)
+    .set({ status: "acted", aiDraft: rawBody.body.trim() })
+    .where(eq(followUpQueue.id, id));
+
+  return c.json({ ok: true, messageId });
 });
 
 // ── Save Draft to Gmail ─────────────────────────────────────────────────────

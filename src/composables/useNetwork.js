@@ -19,13 +19,11 @@ const scanningThreads = ref(false)
 const scanProgress = ref({ fetched: 0, limit: 5000, found: 0, phase: '' })
 
 const REASON_LABELS = {
-  ball_in_your_court: 'Ball in your court',
-  went_cold: 'Went cold',
+  went_cold: 'Awaiting reply',
   date_coming_up: 'Coming up',
 }
 
 const REASON_ICONS = {
-  ball_in_your_court: 'reply',
   went_cold: 'clock',
   date_coming_up: 'calendar',
 }
@@ -131,15 +129,19 @@ export function useNetwork() {
     }
   }
 
-  async function generateDraft(followUpId) {
+  async function generateDraft(followUpId, opts = {}) {
     const item = followUps.value.find(f => f.id === followUpId)
     if (item) item.drafting = true
 
     try {
       const data = await api(`/network/follow-ups/${followUpId}/draft`, {
         method: 'POST',
+        body: JSON.stringify({
+          direction: opts.direction || null,
+          previousDraft: opts.previousDraft || null,
+          feedback: opts.feedback || null,
+        }),
       })
-      // Update the follow-up with the draft
       if (item) {
         item.aiDraft = data.draft
         item.drafting = false
@@ -148,6 +150,33 @@ export function useNetwork() {
     } catch (err) {
       if (item) item.drafting = false
       console.error('Failed to generate draft:', err)
+      throw err
+    }
+  }
+
+  async function fetchDirectionSuggestions(followUpId) {
+    try {
+      const data = await api(`/network/follow-ups/${followUpId}/suggestions`, {
+        method: 'POST',
+      })
+      return data.suggestions || []
+    } catch (err) {
+      console.error('Failed to fetch direction suggestions:', err)
+      return []
+    }
+  }
+
+  async function sendFollowUp(followUpId, body) {
+    try {
+      await api(`/network/follow-ups/${followUpId}/send`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      })
+      // Remove from queue locally
+      followUps.value = followUps.value.filter(f => f.id !== followUpId)
+      return true
+    } catch (err) {
+      console.error('Failed to send follow-up:', err)
       throw err
     }
   }
@@ -400,6 +429,8 @@ export function useNetwork() {
     updateContact,
     actOnFollowUp,
     generateDraft,
+    fetchDirectionSuggestions,
+    sendFollowUp,
     saveDraftToGmail,
     sendFollowUpAsMessage,
     scanThreads,

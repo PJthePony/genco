@@ -8,7 +8,10 @@ const props = defineProps({
   scanProgress: Object,
 })
 
-const emit = defineEmits(['draft', 'snooze', 'dismiss', 'noise', 'act', 'save-draft', 'send-imessage'])
+const emit = defineEmits([
+  'snooze', 'dismiss', 'noise', 'act', 'save-draft', 'send-imessage',
+  'fetch-suggestions', 'generate-draft', 'send',
+])
 
 const expanded = ref(props.items.length > 0)
 const expandedCardId = ref(null)
@@ -34,16 +37,24 @@ function handleDismiss(id) {
   emit('dismiss', id)
 }
 
-function handleDraft(id) {
-  emit('draft', id)
-}
-
 function handleSaveDraft(id, body) {
   emit('save-draft', id, body)
 }
 
 function handleSendMessage(id, body) {
   emit('send-imessage', id, body)
+}
+
+function handleSend(id, body) {
+  emit('send', id, body)
+}
+
+function handleFetchSuggestions(id, resolve) {
+  emit('fetch-suggestions', id, resolve)
+}
+
+function handleGenerateDraft(id, opts, resolve) {
+  emit('generate-draft', id, opts, resolve)
 }
 
 function handleNoise(id) {
@@ -61,7 +72,7 @@ function handleNoise(id) {
         </div>
         <div>
           <div class="section-label">Follow Up</div>
-          <div class="section-sublabel">Threads needing attention</div>
+          <div class="section-sublabel">Threads awaiting their reply</div>
         </div>
       </div>
       <div class="section-header-right">
@@ -85,12 +96,14 @@ function handleNoise(id) {
           :card="card"
           :expanded="expandedCardId === card.id"
           @expand="toggleCard(card.id)"
-          @draft="handleDraft"
           @snooze="handleSnooze"
           @dismiss="handleDismiss"
           @noise="handleNoise"
           @save-draft="handleSaveDraft"
           @send-imessage="handleSendMessage"
+          @send="handleSend"
+          @fetch-suggestions="handleFetchSuggestions"
+          @generate-draft="handleGenerateDraft"
         />
       </template>
       <div v-else class="empty-state">

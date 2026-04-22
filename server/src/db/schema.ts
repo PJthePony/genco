@@ -303,7 +303,7 @@ export const followUpQueue = pgTable(
     networkContactId: uuid("network_contact_id")
       .notNull()
       .references(() => networkContacts.id, { onDelete: "cascade" }),
-    reason: text("reason").notNull(), // "ball_in_your_court" | "went_cold" | "date_coming_up"
+    reason: text("reason").notNull(), // "went_cold" (awaiting reply) | "date_coming_up"
     surfacedAt: timestamp("surfaced_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
