@@ -128,7 +128,7 @@ async function handleSendNow(id, body, opts = {}) {
   try {
     await sendFollowUp(id, body, opts)
     refreshCount()
-    showToast(opts.cc?.length ? 'Sent (Luca CC\'d)' : 'Sent')
+    showToast(opts.cc?.length ? 'Sent (calendar assistant CC\'d)' : 'Sent')
   } catch (err) {
     showToast('Send failed')
   }
@@ -159,7 +159,7 @@ async function handleQueueGenerateDraft(id, opts, resolve) {
 async function handleQueueSend(id, body, opts = {}) {
   try {
     await sendQueueReply(id, body, opts)
-    showToast(opts.cc?.length ? 'Sent (Luca CC\'d)' : 'Sent')
+    showToast(opts.cc?.length ? 'Sent (calendar assistant CC\'d)' : 'Sent')
   } catch (err) {
     showToast('Send failed')
   }

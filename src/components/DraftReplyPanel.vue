@@ -328,11 +328,11 @@ function handleSendImessage() {
         </button>
       </div>
 
-      <!-- Meeting → CC Luca toggle -->
+      <!-- Meeting → CC calendar assistant toggle -->
       <label v-if="!pendingSend && suggestsMeeting && lucaEmail" class="cc-luca-row">
         <input type="checkbox" v-model="ccLuca" />
         <span>
-          Looks like a meeting — <strong>CC Luca</strong> ({{ lucaEmail }}) so he can find a time
+          Looks like a meeting — <strong>CC calendar assistant</strong> ({{ lucaEmail }}) to find a time
         </span>
       </label>
 

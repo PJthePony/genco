@@ -14,6 +14,7 @@ import {
   type VoiceContext,
 } from "../lib/claude.js";
 import { draftSuggestsMeeting } from "../lib/meeting.js";
+import { DEFAULT_CALENDAR_ASSISTANT_EMAIL } from "../lib/defaults.js";
 import { senderSummaries, feedbackLog } from "../db/schema.js";
 
 const VALID_ACTIONS = [
@@ -630,7 +631,7 @@ queueRoutes.post("/:id/draft", async (c) => {
       formalityScore: Number(b.formalityScore ?? 50),
     })),
     suggestsMeeting: draftSuggestsMeeting(draft),
-    lucaEmail: prefs?.lucaEmail ?? null,
+    lucaEmail: prefs?.lucaEmail ?? DEFAULT_CALENDAR_ASSISTANT_EMAIL,
   });
 });
 

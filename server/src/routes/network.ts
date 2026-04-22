@@ -31,6 +31,7 @@ import {
   pickVoiceBucket,
 } from "../lib/claude.js";
 import { draftSuggestsMeeting } from "../lib/meeting.js";
+import { DEFAULT_CALENDAR_ASSISTANT_EMAIL } from "../lib/defaults.js";
 import { isNoiseEmail } from "../lib/noise.js";
 
 export const networkRoutes = new Hono<{ Variables: { user: AuthUser } }>();
@@ -538,7 +539,7 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
       formalityScore: Number(b.formalityScore ?? 50),
     })),
     suggestsMeeting: draftSuggestsMeeting(draft),
-    lucaEmail: prefs?.lucaEmail ?? null,
+    lucaEmail: prefs?.lucaEmail ?? DEFAULT_CALENDAR_ASSISTANT_EMAIL,
   });
 });
 

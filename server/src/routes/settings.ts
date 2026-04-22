@@ -7,6 +7,7 @@ import {
   userPreferences,
 } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
+import { DEFAULT_CALENDAR_ASSISTANT_EMAIL } from "../lib/defaults.js";
 
 export const settingsRoutes = new Hono<{ Variables: { user: AuthUser } }>();
 
@@ -24,7 +25,7 @@ settingsRoutes.get("/preferences", async (c) => {
 
   return c.json({
     scanFrequency: prefs?.scanFrequency ?? "10min",
-    lucaEmail: prefs?.lucaEmail ?? null,
+    lucaEmail: prefs?.lucaEmail ?? DEFAULT_CALENDAR_ASSISTANT_EMAIL,
   });
 });
 

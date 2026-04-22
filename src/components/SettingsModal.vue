@@ -223,15 +223,15 @@ function timeAgo(timestamp) {
           </div>
         </div>
         <div class="settings-group">
-          <div class="settings-label">Luca (Calendar Manager)</div>
+          <div class="settings-label">Calendar assistant</div>
           <div class="settings-row">
-            <span>Luca email</span>
+            <span>Email</span>
             <div class="settings-row-right">
               <input
                 class="settings-input"
                 type="email"
                 v-model="lucaEmail"
-                placeholder="luca@example.com"
+                placeholder="luca@tanzillo.ai"
                 @blur="saveLucaEmail"
                 @keyup.enter="saveLucaEmail"
               />
@@ -239,7 +239,7 @@ function timeAgo(timestamp) {
               <span v-else-if="lucaSaved" class="settings-value">Saved</span>
             </div>
           </div>
-          <p class="settings-hint">When a draft suggests a meeting, Genco will offer to CC this address so Luca can find a time.</p>
+          <p class="settings-hint">When a draft suggests a meeting, Genco will offer to CC this address so the calendar assistant can find a time.</p>
         </div>
         <div class="settings-group">
           <div class="settings-label">Daily Briefing Sources</div>
