@@ -12,6 +12,7 @@ import {
   outboundMessages,
   userNoiseList,
   voiceProfiles,
+  voiceBucketAssignments,
   userPreferences,
 } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
@@ -479,10 +480,19 @@ networkRoutes.post("/follow-ups/:id/draft", async (c) => {
     }
 
     if (voiceSource !== "history" && buckets.length > 0) {
-      const picked = pickVoiceBucket(buckets, {
-        email: contact.email,
-        senderSummary: summary?.summary ?? null,
+      // Load manual assignments so the user's "move X to bucket Y" overrides apply
+      const assignRows = await db.query.voiceBucketAssignments.findMany({
+        where: eq(voiceBucketAssignments.userId, user.sub),
+        columns: { contactEmail: true, voiceProfileId: true },
       });
+      const assignments = new Map(
+        assignRows.map((r) => [r.contactEmail.toLowerCase(), r.voiceProfileId]),
+      );
+      const picked = pickVoiceBucket(
+        buckets,
+        { email: contact.email, senderSummary: summary?.summary ?? null },
+        assignments,
+      );
       if (picked) {
         activeBucketId = picked.id;
         voiceSource = "bucket";

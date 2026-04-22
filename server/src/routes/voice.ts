@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { gmailConnections, voiceProfiles, voiceSamples } from "../db/schema.js";
+import { gmailConnections, voiceProfiles, voiceSamples, voiceBucketAssignments } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import {
   fetchSentEmailsForVoice,
@@ -10,9 +10,11 @@ import {
 } from "../lib/gmail.js";
 import {
   analyzeVoiceProfiles,
+  distillVoiceBucket,
   generateFollowUpDraft,
   type VoiceContext,
 } from "../lib/claude.js";
+import { inArray } from "drizzle-orm";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,10 +44,17 @@ voiceRoutes.get("/", async (c) => {
     columns: { id: true },
   });
 
+  // Manual overrides
+  const assignments = await db.query.voiceBucketAssignments.findMany({
+    where: eq(voiceBucketAssignments.userId, user.sub),
+    columns: { contactEmail: true, voiceProfileId: true },
+  });
+
   return c.json({
     analyzedAt: latestAt,
     profiles: active,
     sampleCount: sampleRows.length,
+    assignments,
   });
 });
 
@@ -226,6 +235,156 @@ voiceRoutes.delete("/:id", async (c) => {
     .returning({ id: voiceProfiles.id });
 
   if (deleted.length === 0) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// POST /voice/profiles/:id/split — pull selected recipients out of a bucket
+// into a brand-new bucket distilled from just their samples.
+// Body: { recipientEmails: string[], newLabel?: string }
+voiceRoutes.post("/profiles/:id/split", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) return c.json({ error: "Invalid id" }, 400);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    recipientEmails?: string[];
+    newLabel?: string;
+  };
+  const emails = Array.isArray(body.recipientEmails)
+    ? body.recipientEmails
+        .map((e) => (typeof e === "string" ? e.toLowerCase().trim() : ""))
+        .filter(Boolean)
+    : [];
+  if (emails.length === 0) {
+    return c.json({ error: "recipientEmails is required" }, 400);
+  }
+
+  const source = await db.query.voiceProfiles.findFirst({
+    where: and(
+      eq(voiceProfiles.id, id),
+      eq(voiceProfiles.userId, user.sub),
+    ),
+  });
+  if (!source) return c.json({ error: "Source bucket not found" }, 404);
+
+  // Pull samples for these recipients from the persisted corpus
+  const samples = await db.query.voiceSamples.findMany({
+    where: and(
+      eq(voiceSamples.userId, user.sub),
+      inArray(voiceSamples.toEmail, emails),
+    ),
+  });
+
+  if (samples.length < 2) {
+    return c.json(
+      { error: "Not enough emails to these recipients in your corpus. Analyze more first." },
+      422,
+    );
+  }
+
+  const bucket = await distillVoiceBucket(
+    samples.map((s) => ({
+      to: s.toEmail,
+      toName: s.toName ?? "",
+      subject: s.subject ?? "",
+      body: s.body,
+    })),
+    { hintLabel: body.newLabel?.trim() || undefined },
+  );
+
+  const inserted = await db
+    .insert(voiceProfiles)
+    .values({
+      userId: user.sub,
+      label: bucket.label,
+      description: bucket.description,
+      formalityScore: String(bucket.formalityScore),
+      greetingHabits: bucket.greetingHabits,
+      signOffHabits: bucket.signOffHabits,
+      sentenceStyle: bucket.sentenceStyle,
+      samplePhrases: bucket.samplePhrases,
+      sampleRecipients: bucket.sampleRecipients,
+      matchSignals: bucket.matchSignals,
+      analyzedAt: source.analyzedAt, // keep alongside the current clustering batch
+    })
+    .returning();
+
+  const newProfileId = inserted[0].id;
+
+  // Upsert assignments: these recipients always use the new bucket
+  for (const email of emails) {
+    await db
+      .insert(voiceBucketAssignments)
+      .values({
+        userId: user.sub,
+        contactEmail: email,
+        voiceProfileId: newProfileId,
+      })
+      .onConflictDoUpdate({
+        target: [voiceBucketAssignments.userId, voiceBucketAssignments.contactEmail],
+        set: { voiceProfileId: newProfileId },
+      });
+  }
+
+  return c.json({ ok: true, profile: inserted[0] });
+});
+
+// POST /voice/profiles/:id/move — move selected recipients INTO this bucket
+// Body: { recipientEmails: string[] }
+voiceRoutes.post("/profiles/:id/move", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) return c.json({ error: "Invalid id" }, 400);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    recipientEmails?: string[];
+  };
+  const emails = Array.isArray(body.recipientEmails)
+    ? body.recipientEmails
+        .map((e) => (typeof e === "string" ? e.toLowerCase().trim() : ""))
+        .filter(Boolean)
+    : [];
+  if (emails.length === 0) {
+    return c.json({ error: "recipientEmails is required" }, 400);
+  }
+
+  const target = await db.query.voiceProfiles.findFirst({
+    where: and(
+      eq(voiceProfiles.id, id),
+      eq(voiceProfiles.userId, user.sub),
+    ),
+  });
+  if (!target) return c.json({ error: "Target bucket not found" }, 404);
+
+  for (const email of emails) {
+    await db
+      .insert(voiceBucketAssignments)
+      .values({
+        userId: user.sub,
+        contactEmail: email,
+        voiceProfileId: id,
+      })
+      .onConflictDoUpdate({
+        target: [voiceBucketAssignments.userId, voiceBucketAssignments.contactEmail],
+        set: { voiceProfileId: id },
+      });
+  }
+
+  return c.json({ ok: true, moved: emails.length });
+});
+
+// DELETE /voice/assignments/:email — clear the manual override for a contact
+voiceRoutes.delete("/assignments/:email", async (c) => {
+  const user = c.get("user");
+  const email = c.req.param("email").toLowerCase();
+  await db
+    .delete(voiceBucketAssignments)
+    .where(
+      and(
+        eq(voiceBucketAssignments.userId, user.sub),
+        eq(voiceBucketAssignments.contactEmail, email),
+      ),
+    );
   return c.json({ ok: true });
 });
 

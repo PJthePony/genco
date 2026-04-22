@@ -11,6 +11,7 @@ const {
   profiles,
   analyzedAt,
   sampleCount,
+  assignments,
   loading,
   analyzing,
   fetchProfiles,
@@ -19,7 +20,90 @@ const {
   updateProfile,
   deleteProfile,
   previewDrafts,
+  splitBucket,
+  moveRecipients,
 } = useVoice()
+
+// Per-bucket selection state: id → Set<email>
+const selectedRecipients = ref({})
+const splittingId = ref(null)      // bucket id currently showing the "name new bucket" inline form
+const newBucketLabel = ref('')
+const splitLoading = ref(false)
+const moveTargetFor = ref(null)    // id showing the move-to dropdown
+
+function toggleRecipient(bucketId, email) {
+  if (!selectedRecipients.value[bucketId]) {
+    selectedRecipients.value[bucketId] = new Set()
+  }
+  const set = selectedRecipients.value[bucketId]
+  if (set.has(email)) set.delete(email)
+  else set.add(email)
+  // Force reactivity on Set mutation
+  selectedRecipients.value = { ...selectedRecipients.value }
+}
+
+function isSelected(bucketId, email) {
+  return selectedRecipients.value[bucketId]?.has(email) || false
+}
+
+function selectedCount(bucketId) {
+  return selectedRecipients.value[bucketId]?.size || 0
+}
+
+function clearSelection(bucketId) {
+  if (selectedRecipients.value[bucketId]) {
+    delete selectedRecipients.value[bucketId]
+    selectedRecipients.value = { ...selectedRecipients.value }
+  }
+}
+
+function startSplit(bucketId) {
+  splittingId.value = bucketId
+  newBucketLabel.value = ''
+}
+
+function cancelSplit() {
+  splittingId.value = null
+  newBucketLabel.value = ''
+}
+
+async function confirmSplit(sourceBucketId) {
+  const emails = Array.from(selectedRecipients.value[sourceBucketId] || [])
+  if (emails.length === 0) return
+  splitLoading.value = true
+  error.value = ''
+  try {
+    await splitBucket(sourceBucketId, emails, newBucketLabel.value.trim())
+    clearSelection(sourceBucketId)
+    splittingId.value = null
+    newBucketLabel.value = ''
+  } catch (err) {
+    error.value = err?.message || 'Split failed'
+  } finally {
+    splitLoading.value = false
+  }
+}
+
+async function handleMoveTo(sourceBucketId, targetBucketId) {
+  const emails = Array.from(selectedRecipients.value[sourceBucketId] || [])
+  if (emails.length === 0) return
+  error.value = ''
+  try {
+    await moveRecipients(targetBucketId, emails)
+    clearSelection(sourceBucketId)
+    moveTargetFor.value = null
+  } catch (err) {
+    error.value = err?.message || 'Move failed'
+  }
+}
+
+// Lookup: is this email manually assigned to a bucket?
+function assignedBucketLabel(email) {
+  const a = assignments.value.find((x) => x.contactEmail?.toLowerCase() === email?.toLowerCase())
+  if (!a) return null
+  const p = profiles.value.find((x) => x.id === a.voiceProfileId)
+  return p ? p.label : null
+}
 
 const error = ref('')
 const lastRun = ref(null)  // { added, totalSamples, buckets }
@@ -279,11 +363,69 @@ async function handleLogout() {
 
               <div v-if="(p.sampleRecipients || []).length" class="recipients">
                 <span class="phrases-label">Sample recipients</span>
-                <ul>
-                  <li v-for="(r, idx) in p.sampleRecipients" :key="idx">
-                    {{ r.name || r.email }} <span class="recipient-email">&lt;{{ r.email }}&gt;</span>
+                <ul class="recipient-list">
+                  <li v-for="(r, idx) in p.sampleRecipients" :key="idx" class="recipient-row">
+                    <label class="recipient-check">
+                      <input
+                        type="checkbox"
+                        :checked="isSelected(p.id, r.email)"
+                        @change="toggleRecipient(p.id, r.email)"
+                      />
+                      <span>
+                        {{ r.name || r.email }}
+                        <span class="recipient-email">&lt;{{ r.email }}&gt;</span>
+                      </span>
+                    </label>
+                    <span
+                      v-if="assignedBucketLabel(r.email) && assignedBucketLabel(r.email) !== p.label"
+                      class="pill assigned-pill"
+                      :title="`Currently assigned to ${assignedBucketLabel(r.email)}`"
+                    >
+                      → {{ assignedBucketLabel(r.email) }}
+                    </span>
                   </li>
                 </ul>
+
+                <!-- Selection toolbar -->
+                <div v-if="selectedCount(p.id) > 0" class="selection-toolbar">
+                  <span class="selection-count">{{ selectedCount(p.id) }} selected</span>
+                  <button class="btn-link" @click="startSplit(p.id)" :disabled="splitLoading">
+                    Split into new bucket
+                  </button>
+                  <div class="move-wrapper">
+                    <button class="btn-link" @click="moveTargetFor = moveTargetFor === p.id ? null : p.id">
+                      Move to existing ▾
+                    </button>
+                    <div v-if="moveTargetFor === p.id" class="move-menu">
+                      <button
+                        v-for="other in profiles.filter(x => x.id !== p.id)"
+                        :key="other.id"
+                        class="move-menu-item"
+                        @click="handleMoveTo(p.id, other.id)"
+                      >
+                        {{ other.label }}
+                      </button>
+                      <p v-if="profiles.filter(x => x.id !== p.id).length === 0" class="move-empty">
+                        No other buckets yet
+                      </p>
+                    </div>
+                  </div>
+                  <button class="btn-link" @click="clearSelection(p.id)">Clear</button>
+                </div>
+
+                <!-- Split form -->
+                <div v-if="splittingId === p.id" class="split-form">
+                  <input
+                    v-model="newBucketLabel"
+                    class="direction-input"
+                    placeholder="New bucket name (e.g. Family) — optional"
+                    @keyup.enter="confirmSplit(p.id)"
+                  />
+                  <button class="btn-primary" :disabled="splitLoading" @click="confirmSplit(p.id)">
+                    {{ splitLoading ? 'Distilling…' : 'Split' }}
+                  </button>
+                  <button class="btn-link" @click="cancelSplit" :disabled="splitLoading">Cancel</button>
+                </div>
               </div>
 
               <div v-if="p.matchSignals && (p.matchSignals.notes || (p.matchSignals.domainHints || []).length || (p.matchSignals.relationshipHints || []).length)" class="signals">
@@ -518,6 +660,115 @@ async function handleLogout() {
 }
 
 .recipient-email { color: var(--text-muted); font-size: 0.7rem; }
+
+.recipient-list { gap: 2px; }
+
+.recipient-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.recipient-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.recipient-check input[type="checkbox"] { cursor: pointer; }
+
+.assigned-pill {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-color: var(--color-accent-border, var(--color-accent));
+  flex-shrink: 0;
+}
+
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.selection-count {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.move-wrapper { position: relative; }
+
+.move-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 180px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+  overflow: hidden;
+}
+
+.move-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.72rem;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.move-menu-item:hover { background: var(--color-bg); color: var(--text); }
+
+.move-empty {
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.split-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.split-form .direction-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  font-family: inherit;
+  background: var(--color-bg);
+  color: var(--text);
+}
+
+.split-form .direction-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 
 .signal-pills { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 

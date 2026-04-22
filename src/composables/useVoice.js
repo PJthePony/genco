@@ -4,6 +4,7 @@ import { api } from './useApi'
 const profiles = ref([])
 const analyzedAt = ref(null)
 const sampleCount = ref(0)
+const assignments = ref([])  // [{ contactEmail, voiceProfileId }]
 const loading = ref(false)
 const analyzing = ref(false)
 
@@ -15,9 +16,28 @@ export function useVoice() {
       profiles.value = data.profiles || []
       analyzedAt.value = data.analyzedAt || null
       sampleCount.value = data.sampleCount || 0
+      assignments.value = data.assignments || []
     } finally {
       loading.value = false
     }
+  }
+
+  async function splitBucket(sourceId, recipientEmails, newLabel) {
+    const data = await api(`/voice/profiles/${sourceId}/split`, {
+      method: 'POST',
+      body: JSON.stringify({ recipientEmails, newLabel }),
+    })
+    await fetchProfiles()
+    return data
+  }
+
+  async function moveRecipients(targetId, recipientEmails) {
+    const data = await api(`/voice/profiles/${targetId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ recipientEmails }),
+    })
+    await fetchProfiles()
+    return data
   }
 
   async function runAnalysis(batchSize = 50) {
@@ -67,6 +87,7 @@ export function useVoice() {
     profiles,
     analyzedAt,
     sampleCount,
+    assignments,
     loading,
     analyzing,
     fetchProfiles,
@@ -75,5 +96,7 @@ export function useVoice() {
     updateProfile,
     deleteProfile,
     previewDrafts,
+    splitBucket,
+    moveRecipients,
   }
 }

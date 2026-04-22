@@ -348,6 +348,34 @@ export const voiceSamples = pgTable(
   ],
 );
 
+// ── Voice Bucket Assignments ────────────────────────────────────────────────
+// Manual overrides: maps a specific contact email to a specific voice bucket.
+// When present, picks this bucket for that contact regardless of the
+// deterministic match rules. Used to "pull X out of this bucket" (e.g.
+// move family out of close-friends-and-colleagues into a dedicated bucket).
+
+export const voiceBucketAssignments = pgTable(
+  "voice_bucket_assignments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
+    contactEmail: text("contact_email").notNull(),
+    voiceProfileId: uuid("voice_profile_id")
+      .notNull()
+      .references(() => voiceProfiles.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_voice_assignments_user_email").on(
+      table.userId,
+      table.contactEmail,
+    ),
+    index("idx_voice_assignments_profile").on(table.voiceProfileId),
+  ],
+);
+
 // ── Follow-Up Queue ─────────────────────────────────────────────────────────
 
 export const followUpQueue = pgTable(

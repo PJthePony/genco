@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, desc, isNotNull, gte, or, inArray, count, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { emailQueue, gmailConnections, networkContacts, followUpQueue, voiceProfiles, userPreferences } from "../db/schema.js";
+import { emailQueue, gmailConnections, networkContacts, followUpQueue, voiceProfiles, voiceBucketAssignments, userPreferences } from "../db/schema.js";
 import { authMiddleware, type AuthUser } from "../middleware/auth.js";
 import { executeAction } from "../services/actions.js";
 import { archiveMessage, unarchiveMessage, refreshAccessToken, sendReply, fetchSentEmailsToContact, type GoogleTokens } from "../lib/gmail.js";
@@ -577,10 +577,18 @@ queueRoutes.post("/:id/draft", async (c) => {
     }
 
     if (voiceSource !== "history" && buckets.length > 0) {
-      const picked = pickVoiceBucket(buckets, {
-        email: email.fromEmail,
-        senderSummary: senderSummary?.summary ?? null,
+      const assignRows = await db.query.voiceBucketAssignments.findMany({
+        where: eq(voiceBucketAssignments.userId, user.sub),
+        columns: { contactEmail: true, voiceProfileId: true },
       });
+      const assignments = new Map(
+        assignRows.map((r) => [r.contactEmail.toLowerCase(), r.voiceProfileId]),
+      );
+      const picked = pickVoiceBucket(
+        buckets,
+        { email: email.fromEmail, senderSummary: senderSummary?.summary ?? null },
+        assignments,
+      );
       if (picked) {
         activeBucketId = picked.id;
         voiceSource = "bucket";

@@ -78,6 +78,13 @@
       "when": 1776888633178,
       "tag": "0011_nostalgic_silvermane",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776889909148,
+      "tag": "0012_common_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

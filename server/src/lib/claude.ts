@@ -1143,6 +1143,7 @@ export async function generateDirectionSuggestions(opts: {
  */
 export function pickVoiceBucket<
   T extends {
+    id: string;
     formalityScore: string | null;
     sampleRecipients: unknown;
     matchSignals: unknown;
@@ -1150,12 +1151,22 @@ export function pickVoiceBucket<
 >(
   buckets: T[],
   contact: { email: string; senderSummary: string | null },
+  assignments?: Map<string, string>, // contactEmail → bucketId
 ): T | null {
   if (buckets.length === 0) return null;
 
   const contactEmail = contact.email.toLowerCase();
   const contactDomain = contactEmail.split("@")[1] ?? "";
   const summary = (contact.senderSummary ?? "").toLowerCase();
+
+  // Hard override: manual assignment for this contact
+  if (assignments) {
+    const assignedId = assignments.get(contactEmail);
+    if (assignedId) {
+      const hit = buckets.find((b) => b.id === assignedId);
+      if (hit) return hit;
+    }
+  }
 
   let best: { bucket: T; score: number } | null = null;
   for (const b of buckets) {
@@ -1203,6 +1214,89 @@ export function pickVoiceBucket<
   return ranked[0] ?? null;
 }
 
+/**
+ * Distill a single voice bucket from a hand-picked subset of samples.
+ * Used when the user "splits" a bucket — e.g. pulling family recipients
+ * out of "Close friends and colleagues" into a new Family bucket.
+ * The LLM produces exactly one bucket.
+ */
+export async function distillVoiceBucket(
+  samples: VoiceSample[],
+  opts: { hintLabel?: string } = {},
+): Promise<VoiceBucket> {
+  if (samples.length === 0) {
+    throw new Error("distillVoiceBucket needs at least one sample");
+  }
+
+  const system = [
+    `You are analyzing a person's sent emails to exactly one audience (these specific recipients).`,
+    `Produce one voice bucket that captures their style with this group.`,
+    `Look at: greeting habits, sign-offs, sentence length, formality, contractions, lowercase, emoji use, business jargon vs casual phrases, and any phrases unique to this audience (e.g. "love you", nicknames).`,
+    opts.hintLabel
+      ? `The user has labeled this group "${opts.hintLabel}" — use that as the bucket label.`
+      : `Name the bucket based on who these recipients seem to be.`,
+    `Return JSON only, no commentary, no markdown fences. Format:`,
+    `{"label":"...","description":"...","formalityScore":0-100,"greetingHabits":"...","signOffHabits":"...","sentenceStyle":"...","samplePhrases":["...","..."],"sampleRecipients":[{"email":"...","name":"..."}],"matchSignals":{"domainHints":["..."],"relationshipHints":["..."],"notes":"..."}}`,
+    `samplePhrases: 3-5 verbatim short phrases pulled directly from these emails.`,
+    `sampleRecipients: the recipients provided (echo them back).`,
+  ].join("\n");
+
+  const userParts: string[] = [`SAMPLES (${samples.length}):`];
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const body = s.body.length > 700 ? s.body.slice(0, 700) + "…" : s.body;
+    userParts.push(``);
+    userParts.push(`--- Email ${i + 1} ---`);
+    userParts.push(`To: ${s.toName ? `${s.toName} <${s.to}>` : s.to}`);
+    userParts.push(`Subject: ${s.subject}`);
+    userParts.push(`Body:`);
+    userParts.push(body);
+  }
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+      }
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 2000,
+        system,
+        messages: [{ role: "user", content: userParts.join("\n") }],
+      });
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text",
+      );
+      const raw = textBlock?.text ?? "";
+      const cleaned = raw
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim();
+      const b = JSON.parse(cleaned) as Partial<VoiceBucket>;
+      return {
+        label: b.label || opts.hintLabel || "Untitled",
+        description: b.description || "",
+        formalityScore:
+          typeof b.formalityScore === "number" ? b.formalityScore : 50,
+        greetingHabits: b.greetingHabits ?? "",
+        signOffHabits: b.signOffHabits ?? "",
+        sentenceStyle: b.sentenceStyle ?? "",
+        samplePhrases: Array.isArray(b.samplePhrases) ? b.samplePhrases : [],
+        sampleRecipients: Array.isArray(b.sampleRecipients)
+          ? b.sampleRecipients
+          : [],
+        matchSignals: b.matchSignals ?? {},
+      };
+    } catch (err: any) {
+      lastError = err;
+      if (err.status && err.status < 500 && err.status !== 429) throw err;
+    }
+  }
+  throw lastError ?? new Error("Failed to distill voice bucket");
+}
+
 // ── Voice Profile Clustering ────────────────────────────────────────────────
 
 export interface VoiceSample {
@@ -1239,7 +1333,7 @@ export async function analyzeVoiceProfiles(
 
   const system = [
     `You are analyzing a person's sent emails to discover the distinct writing voices they use with different audiences.`,
-    `Cluster the emails into 3-5 buckets based on actual style differences — not topics.`,
+    `Cluster the emails into 3-8 buckets based on actual style differences — not topics. Only add more buckets when the style difference is genuine (e.g. family gets "love you" while close colleagues don't) — don't fragment when two groups would be described the same way.`,
     `Look at: greeting habits (Hi/Hey/Yo/none), sign-offs (best/thanks/—pj/none), sentence length, formality, contractions, lowercase usage, punctuation, emoji use, business jargon vs casual phrases.`,
     `For each bucket, name it based on the audience it fits (e.g. "Close friends", "Family", "Pro-formal", "Pro-casual peers", "Service/transactional"). Don't force categories — derive them from the data.`,
     `Return JSON only, no commentary, no markdown fences. Format:`,
