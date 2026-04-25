@@ -10,7 +10,7 @@ function goToFamily() {
   <main class="page">
     <header class="bar">
       <a class="brand" :href="FAMILY_URL">
-        <span class="dot" />
+        <img class="icon" src="https://family.tanzillo.ai/apple-touch-icon.png" alt="" />
         <span class="word">Genco</span>
       </a>
       <button class="btn ghost" @click="goToFamily">Sign in to The Family</button>
@@ -52,7 +52,7 @@ function goToFamily() {
 .page { min-height: 100dvh; background: var(--bg); display: flex; flex-direction: column; }
 .bar { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; background: var(--bg); backdrop-filter: saturate(140%) blur(8px); }
 .brand { display: flex; align-items: center; gap: var(--space-3); text-decoration: none; color: var(--text); }
-.dot { width: 10px; height: 10px; border-radius: var(--radius-pill); background: var(--accent); display: inline-block; }
+.icon { width: 24px; height: 24px; border-radius: var(--radius-sm); display: block; }
 .word { font-family: var(--font-serif); font-weight: 600; font-size: var(--step-1); letter-spacing: -0.01em; }
 
 .hero { max-width: 720px; margin: 0 auto; padding: var(--space-9) var(--space-5) var(--space-7); text-align: center; }

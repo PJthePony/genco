@@ -12,6 +12,12 @@ export async function bootstrapSSO() {
     const payload = JSON.parse(atob(decodeURIComponent(encoded)))
     if (!payload.access_token || !payload.refresh_token) return
 
+    // Mark the .tanzillo.ai cookie bridge as already done so useAuth's
+    // SIGNED_IN handler doesn't trigger a redundant Luca round-trip
+    // (which causes a visible flash). The family hub bridged through
+    // Luca during AuthCallback before handing us this fragment.
+    sessionStorage.setItem('luca_synced', '1')
+
     await supabase.auth.setSession({
       access_token: payload.access_token,
       refresh_token: payload.refresh_token,
