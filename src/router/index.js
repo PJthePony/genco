@@ -5,7 +5,7 @@ const routes = [
   {
     path: '/',
     name: 'Landing',
-    component: () => import('../views/LandingView.vue'),
+    component: () => import('../views/LoginView.vue'),
     meta: { redirectIfAuth: true }
   },
   {
