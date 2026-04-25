@@ -1,163 +1,11 @@
-/* ──────────────────────────────────────────────────────────
-   Genco — Tanzillo.ai Design System
-   Locked four: fuchsia / teal / navy / sage
-   Type: Fraunces (editorial), Bricolage Grotesque (UI), JetBrains Mono
-   ────────────────────────────────────────────────────────── */
-
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tanzillo-ds';
 
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 button { cursor: pointer; font-family: inherit; font-size: inherit; border: none; background: none; color: inherit; }
 
-/* ── Tokens ── */
 :root {
-  /* ── PRIMARY (locked) ── */
-  --color-fuchsia: #D4246F;
-  --color-teal:    #0D5C52;
-  --color-navy:    #142235;
-  --color-sage:    #F0F5F3;
-
-  /* ── FUCHSIA RAMP ── */
-  --fuchsia-50:  #FAE8F1;
-  --fuchsia-100: #F3B4D2;
-  --fuchsia-200: #E880B0;
-  --fuchsia-400: #DE528C;
-  --fuchsia-600: #D4246F;
-  --fuchsia-800: #A01A54;
-  --fuchsia-900: #6A1038;
-
-  /* ── TEAL RAMP ── */
-  --teal-50:  #D4EFEC;
-  --teal-100: #91D5CE;
-  --teal-200: #4CB8AF;
-  --teal-400: #239085;
-  --teal-600: #0D5C52;
-  --teal-800: #09403A;
-  --teal-900: #052620;
-
-  /* ── NAVY RAMP ── */
-  --navy-50:  #D6DEE9;
-  --navy-100: #9BAAC1;
-  --navy-200: #5E7189;
-  --navy-400: #334A66;
-  --navy-600: #142235;
-  --navy-800: #0C172A;
-  --navy-900: #060D1A;
-
-  /* ── SAGE RAMP ── */
-  --sage-50:  #FFFFFF;
-  --sage-100: #F8FBF9;
-  --sage-200: #F0F5F3;
-  --sage-400: #E0EDEA;
-  --sage-600: #C4D9D5;
-  --sage-800: #8CAAA5;
-  --sage-900: #527872;
-
-  /* ── EXTENDED (apps only) ── */
-  --copper-200: #E39CB4;
-  --copper-400: #B43A5F;
-  --copper-600: #7A1E3A;
-
-  --success-600: #2B8A6E;
-  --success-100: #C9E6DB;
-  --warning-600: #D0682A;
-  --warning-100: #F4D3BA;
-  --danger-600:  #A83A4A;
-  --danger-100:  #F0CCD4;
-
-  --violet-600: #7E3E9E;
-  --violet-100: #DCC8E8;
-  --azure-600:  #3B5A8C;
-  --azure-100:  #C4CEE0;
-
-  /* ── SEMANTIC — light mode ── */
-  --bg:            var(--sage-200);
-  --bg-elevated:   var(--sage-100);
-  --bg-card:       var(--sage-50);
-  --bg-inset:      var(--sage-400);
-  --text:          var(--navy-600);
-  --text-muted:    var(--navy-400);
-  --text-subtle:   var(--navy-200);
-  --text-ghost:    var(--sage-600);
-  --accent:        var(--fuchsia-600);
-  --accent-hover:  var(--fuchsia-800);
-  --structural:    var(--teal-600);
-  --border:        rgba(20, 34, 53, 0.08);
-  --border-strong: rgba(20, 34, 53, 0.16);
-  --rule:          var(--sage-600);
-
-  /* ── SEMANTIC — dark stage ── */
-  --dark-bg:          var(--navy-600);
-  --dark-bg-elevated: var(--navy-400);
-  --dark-text:        var(--sage-200);
-  --dark-text-muted:  var(--navy-100);
-  --dark-border:      rgba(240, 245, 243, 0.08);
-
-  /* ── TYPEFACES ── */
-  --font-serif: 'Fraunces', 'Times New Roman', Georgia, serif;
-  --font-sans:  'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-  --font-mono:  'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* ── TYPE SCALE ── */
-  --step--1: clamp(0.8125rem, 0.78rem + 0.15vw, 0.875rem);
-  --step-0:  clamp(0.9375rem, 0.91rem + 0.2vw, 1rem);
-  --step-1:  clamp(1.0625rem, 1rem + 0.3vw, 1.15rem);
-  --step-2:  clamp(1.25rem, 1.15rem + 0.5vw, 1.5rem);
-  --step-3:  clamp(1.75rem, 1.5rem + 1.25vw, 2.25rem);
-  --step-4:  clamp(2.25rem, 1.8rem + 2.25vw, 3rem);
-  --step-5:  clamp(2.75rem, 2rem + 3.5vw, 4.5rem);
-  --step-6:  clamp(3.5rem, 2.5rem + 5vw, 6.5rem);
-
-  /* ── SPACING ── */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
-  --space-8: 64px;
-  --space-9: 96px;
-  --space-10: 128px;
-
-  /* ── RADII ── */
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-pill: 999px;
-
-  /* ── ELEVATION — suspension shadows ── */
-  --shadow-hang-sm: 0 1px 2px rgba(20, 34, 53, 0.04),
-                    0 2px 6px rgba(20, 34, 53, 0.04);
-  --shadow-hang-md: 0 2px 4px rgba(20, 34, 53, 0.04),
-                    0 8px 24px rgba(20, 34, 53, 0.08);
-  --shadow-hang-lg: 0 4px 8px rgba(20, 34, 53, 0.06),
-                    0 24px 48px rgba(20, 34, 53, 0.12);
-  --shadow-suspend: 0 18px 24px -16px rgba(20, 34, 53, 0.35);
-
-  /* ── MOTION ── */
-  --ease-settle:   cubic-bezier(0.34, 1.35, 0.64, 1);
-  --ease-pendulum: cubic-bezier(0.37, 0, 0.22, 1.15);
-  --ease-curtain:  cubic-bezier(0.83, 0, 0.17, 1);
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-hang:     cubic-bezier(0.25, 0.1, 0.25, 1);
-
-  --dur-1: 120ms;
-  --dur-2: 220ms;
-  --dur-3: 420ms;
-  --dur-4: 700ms;
-  --dur-5: 1100ms;
-
-  --stagger: 70ms;
-
-  /* ──────────────────────────────────────────────────────
-     LEGACY COMPATIBILITY LAYER
-     Maps Genco's prior slate/orange tokens to the locked
-     palette so existing scoped styles rebrand automatically.
-     ────────────────────────────────────────────────────── */
+  /* Legacy compatibility — pre-DS Genco token names alias to the new ones. */
   --color-bg: var(--bg);
   --color-surface: var(--bg-card);
   --color-surface-elevated: var(--bg-elevated);
@@ -187,12 +35,10 @@ button { cursor: pointer; font-family: inherit; font-size: inherit; border: none
   --color-warning: var(--warning-600);
   --color-warning-soft: rgba(208, 104, 42, 0.10);
 
-  /* Legacy shadow aliases → suspension vocabulary */
   --shadow-sm: var(--shadow-hang-sm);
   --shadow-md: var(--shadow-hang-md);
   --shadow-lg: var(--shadow-hang-lg);
 
-  /* Legacy motion aliases */
   --transition-fast: var(--dur-1) var(--ease-out-expo);
   --transition-normal: var(--dur-2) var(--ease-out-expo);
   --transition: var(--dur-2) var(--ease-out-expo);
@@ -210,65 +56,33 @@ html {
 }
 
 body {
-  font-family: var(--font-sans);
-  background: var(--bg);
-  color: var(--text);
-  font-size: var(--step-0);
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "ss01", "ss02", "kern", "liga";
-  hanging-punctuation: first last;
   min-height: 100vh;
 }
 
 #app { min-height: 100vh; }
 
-/* ── Editorial type defaults ── */
+/* ── Editorial type — Genco-specific sizing on the DS faces ── */
 h1 {
-  font-family: var(--font-serif);
   font-size: 2rem;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.025em;
-  font-variation-settings: 'opsz' 48, 'WONK' 1;
-  color: var(--text);
-  text-wrap: balance;
-  margin: 0;
+  letter-spacing: -0.022em;
+  font-variation-settings: 'opsz' 72;
 }
 
 h2 {
-  font-family: var(--font-serif);
   font-size: 1.4rem;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  font-variation-settings: 'opsz' 48, 'WONK' 1;
-  color: var(--text);
-  text-wrap: balance;
-  margin: 0;
+  letter-spacing: -0.018em;
+  font-variation-settings: 'opsz' 48;
 }
 
 h3 {
-  font-family: var(--font-serif);
   font-size: 1.1rem;
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: -0.015em;
-  font-variation-settings: 'opsz' 24, 'WONK' 0;
-  color: var(--text);
-  margin: 0;
+  letter-spacing: -0.014em;
+  font-variation-settings: 'opsz' 36;
 }
 
 @media (max-width: 768px) {
   h1 { font-size: 1.6rem; }
   h2 { font-size: 1.2rem; }
-}
-
-/* ── Selection ── */
-::selection {
-  background: var(--fuchsia-100);
-  color: var(--fuchsia-900);
 }
 
 /* ── Utility ── */

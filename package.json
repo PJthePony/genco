@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
+    "tanzillo-ds": "github:PJthePony/tanzillo-ds#v1.0.0",
     "vue": "^3.4.0",
     "vue-router": "^4.6.4"
   },
