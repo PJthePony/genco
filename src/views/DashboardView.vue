@@ -545,7 +545,7 @@ onUnmounted(() => {
     <div class="app-body" :style="{ transform: `translateY(${pullDistance}px)` }"  >
       <div class="briefing-header">
         <div class="briefing-date">{{ dateStr }}</div>
-        <h1>The Sit-Down</h1>
+        <h1 class="page-title">The Sit-Down</h1>
         <div class="briefing-stats">
           <div class="briefing-stat"><strong>{{ remaining }}</strong> to review</div>
           <div v-if="urgentCount > 0" class="briefing-stat urgent"><strong>{{ urgentCount }}</strong> urgent</div>
@@ -680,6 +680,22 @@ onUnmounted(() => {
   letter-spacing: 0.2em;
   margin-bottom: 6px;
   font-feature-settings: "c2sc", "smcp";
+}
+
+.page-title {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  font-weight: 600;
+  font-variation-settings: 'opsz' 36;
+  letter-spacing: -0.018em;
+  color: var(--text);
+  line-height: 1.1;
+  margin: 0;
+  text-wrap: balance;
+}
+
+@media (max-width: 768px) {
+  .page-title { font-size: 1.6rem; }
 }
 
 .briefing-stats {

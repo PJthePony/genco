@@ -83,7 +83,7 @@ const router = useRouter()
   font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  font-variation-settings: 'opsz' 24, 'WONK' 1;
+  font-variation-settings: 'opsz' 24;
   color: inherit;
 }
 
