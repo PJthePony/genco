@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { gmailConnections, userPreferences } from "../db/schema.js";
-import { scanInbox } from "./scanner.js";
+import { scanInbox, reconcileInbox } from "./scanner.js";
 import { classifyPendingEmails } from "./classifier.js";
 import { pruneProcessedEmails } from "./cleanup.js";
 import { detectFollowUps } from "./followup.js";
@@ -12,9 +12,11 @@ const FREQUENCY_MS: Record<string, number> = {
 };
 const DEFAULT_INTERVAL_MS = FREQUENCY_MS["10min"];
 const FOLLOW_UP_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const RECONCILE_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 let timeoutId: ReturnType<typeof setTimeout> | null = null;
 let lastFollowUpCheck = 0;
+let lastReconcile = 0;
 let running = false;
 
 /**
@@ -64,6 +66,40 @@ async function scanAllAccounts(): Promise<void> {
           `[Scheduler] Failed to scan ${conn.gmailAddress}:`,
           err,
         );
+      }
+    }
+
+    // Reconciliation safety-net (every 6h): catch any inbox emails the
+    // incremental sync dropped and pull them into the queue.
+    const reconcileNow = Date.now();
+    if (reconcileNow - lastReconcile > RECONCILE_INTERVAL_MS) {
+      lastReconcile = reconcileNow;
+      for (const conn of connections) {
+        try {
+          const result = await reconcileInbox(conn.userId);
+          if (result.recovered > 0) {
+            console.log(
+              `[Scheduler] Reconcile recovered ${result.recovered} emails for ${conn.gmailAddress}`,
+            );
+            // Drain the classifier (it handles up to 20 pending per call) so a
+            // large recovery doesn't leave a backlog unclassified. Bounded to
+            // avoid an unbounded loop if classification keeps failing.
+            let classified = 0;
+            for (let i = 0; i < 40; i++) {
+              const r = await classifyPendingEmails(conn.userId);
+              classified += r.processed;
+              if (r.processed === 0) break;
+            }
+            console.log(
+              `[Scheduler] Classified ${classified} recovered emails for ${conn.gmailAddress}`,
+            );
+          }
+        } catch (err) {
+          console.error(
+            `[Scheduler] Reconcile failed for ${conn.gmailAddress}:`,
+            err,
+          );
+        }
       }
     }
 

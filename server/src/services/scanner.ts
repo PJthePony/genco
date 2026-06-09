@@ -14,6 +14,8 @@ import {
   refreshAccessToken,
   archiveMessage,
   hasUserRepliedToThread,
+  listInboxMessageIds,
+  fetchMessagesByIds,
   type GoogleTokens,
   type RawEmail,
 } from "../lib/gmail.js";
@@ -287,6 +289,95 @@ export async function scanInbox(userId: string): Promise<ScanResult> {
   }
 
   return { fetched: emails.length, inserted, historical, skipped, autoArchived, alreadyReplied };
+}
+
+/**
+ * Reconciliation safety-net.
+ *
+ * Lists every message currently in the Gmail inbox and compares it against
+ * what's already in the queue. Anything in the inbox but missing from the
+ * queue is pulled in as "pending" so it gets classified on the next pass.
+ *
+ * This is independent of the historyId pointer, so it recovers emails dropped
+ * for ANY reason (history gaps, transient fetch failures, an expired pointer
+ * that skipped messages). Runs on a slow cadence from the scheduler.
+ */
+export async function reconcileInbox(
+  userId: string,
+): Promise<{ inboxCount: number; recovered: number }> {
+  const connection = await db.query.gmailConnections.findFirst({
+    where: eq(gmailConnections.userId, userId),
+  });
+  if (!connection) throw new Error("Gmail not connected");
+
+  let tokens = connection.googleTokens as GoogleTokens;
+  if (tokens.expiry_date && tokens.expiry_date < Date.now() + 5 * 60 * 1000) {
+    tokens = await refreshAccessToken(tokens);
+    await db
+      .update(gmailConnections)
+      .set({ googleTokens: tokens, updatedAt: new Date() })
+      .where(eq(gmailConnections.id, connection.id));
+  }
+
+  const inboxIds = await listInboxMessageIds(tokens);
+  if (inboxIds.length === 0) return { inboxCount: 0, recovered: 0 };
+
+  // Which of these are already known to the queue?
+  const known = await db
+    .select({ id: emailQueue.gmailMessageId })
+    .from(emailQueue)
+    .where(eq(emailQueue.userId, userId));
+  const knownSet = new Set(known.map((k) => k.id));
+  const missingIds = inboxIds.filter((id) => !knownSet.has(id));
+
+  if (missingIds.length === 0) {
+    return { inboxCount: inboxIds.length, recovered: 0 };
+  }
+
+  console.log(
+    `[Reconcile] ${connection.gmailAddress}: ${missingIds.length}/${inboxIds.length} inbox emails missing from queue — recovering`,
+  );
+
+  const emails = await fetchMessagesByIds(tokens, missingIds);
+  const userEmail = connection.gmailAddress;
+  let recovered = 0;
+
+  for (const email of emails) {
+    // Skip P.J.'s own sent messages that surface in the inbox
+    if (userEmail && email.fromEmail.toLowerCase() === userEmail.toLowerCase()) {
+      continue;
+    }
+    try {
+      await db.insert(emailQueue).values({
+        userId,
+        gmailMessageId: email.gmailMessageId,
+        gmailThreadId: email.gmailThreadId,
+        fromEmail: email.fromEmail,
+        fromName: email.fromName,
+        subject: email.subject,
+        bodyText: email.bodyText,
+        bodyHtml: email.bodyHtml,
+        receivedAt: email.receivedAt,
+        listUnsubscribe: email.listUnsubscribe,
+        listUnsubscribePost: email.listUnsubscribePost,
+        status: "pending",
+      });
+      recovered++;
+    } catch (err: any) {
+      // 23505 = unique violation (inserted by a concurrent scan) — ignore
+      if (err?.code !== "23505") {
+        console.warn(
+          `[Reconcile] insert failed for ${email.gmailMessageId}:`,
+          err,
+        );
+      }
+    }
+  }
+
+  console.log(
+    `[Reconcile] ${connection.gmailAddress}: recovered ${recovered} emails`,
+  );
+  return { inboxCount: inboxIds.length, recovered };
 }
 
 /**

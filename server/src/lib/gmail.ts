@@ -115,41 +115,53 @@ export async function fetchInboxEmails(
       // arrives on an archived thread, Gmail may record the new message
       // as a messageAdded event WITHOUT the INBOX label, then separately
       // fire a labelsAdded event to re-surface the thread. We need both.
-      const historyResponse = await gmail.users.history.list({
-        userId: "me",
-        startHistoryId: lastHistoryId,
-        historyTypes: ["messageAdded", "labelAdded"],
-      });
-
+      //
+      // history.list is paginated — a single page holds at most ~100-500
+      // records. We MUST follow nextPageToken to the end, otherwise any
+      // backlog larger than one page is silently dropped and then orphaned
+      // when the historyId pointer advances past it.
       const seen = new Set<string>();
-      const histories = historyResponse.data.history ?? [];
-      for (const h of histories) {
-        // New messages that landed in INBOX
-        for (const msg of h.messagesAdded ?? []) {
-          if (
-            msg.message?.id &&
-            msg.message?.labelIds?.includes("INBOX") &&
-            !msg.message?.labelIds?.includes("TRASH") &&
-            !msg.message?.labelIds?.includes("SPAM")
-          ) {
-            if (!seen.has(msg.message.id)) {
-              seen.add(msg.message.id);
-              messageIds.push(msg.message.id);
+      let pageToken: string | undefined;
+      do {
+        const historyResponse = await gmail.users.history.list({
+          userId: "me",
+          startHistoryId: lastHistoryId,
+          historyTypes: ["messageAdded", "labelAdded"],
+          maxResults: 500,
+          pageToken,
+        });
+
+        const histories = historyResponse.data.history ?? [];
+        for (const h of histories) {
+          // New messages that landed in INBOX
+          for (const msg of h.messagesAdded ?? []) {
+            if (
+              msg.message?.id &&
+              msg.message?.labelIds?.includes("INBOX") &&
+              !msg.message?.labelIds?.includes("TRASH") &&
+              !msg.message?.labelIds?.includes("SPAM")
+            ) {
+              if (!seen.has(msg.message.id)) {
+                seen.add(msg.message.id);
+                messageIds.push(msg.message.id);
+              }
+            }
+          }
+          // Messages that had INBOX label added (replies to archived threads)
+          for (const lbl of h.labelsAdded ?? []) {
+            if (
+              lbl.message?.id &&
+              lbl.labelIds?.includes("INBOX") &&
+              !seen.has(lbl.message.id)
+            ) {
+              seen.add(lbl.message.id);
+              messageIds.push(lbl.message.id);
             }
           }
         }
-        // Messages that had INBOX label added (replies to archived threads)
-        for (const lbl of h.labelsAdded ?? []) {
-          if (
-            lbl.message?.id &&
-            lbl.labelIds?.includes("INBOX") &&
-            !seen.has(lbl.message.id)
-          ) {
-            seen.add(lbl.message.id);
-            messageIds.push(lbl.message.id);
-          }
-        }
-      }
+
+        pageToken = historyResponse.data.nextPageToken ?? undefined;
+      } while (pageToken);
     } catch (err: any) {
       // historyId too old or invalid — fall back to full fetch
       if (err?.code === 404) {
@@ -189,6 +201,7 @@ export async function fetchInboxEmails(
 
   // Fetch full message details
   const emails: RawEmail[] = [];
+  let fetchFailed = false;
   for (const msgId of messageIds) {
     try {
       const msg = await gmail.users.messages.get({
@@ -200,14 +213,74 @@ export async function fetchInboxEmails(
       if (parsed) emails.push(parsed);
     } catch (err) {
       console.warn(`Failed to fetch message ${msgId}:`, err);
+      fetchFailed = true;
     }
   }
 
   // Get current historyId for next incremental sync
   const profile = await gmail.users.getProfile({ userId: "me" });
-  const newHistoryId = profile.data.historyId ?? null;
+  let newHistoryId = profile.data.historyId ?? null;
+
+  // If this was an incremental sync (lastHistoryId still set) and any
+  // message failed to fetch, hold the pointer back so the next scan retries
+  // the missed messages rather than orphaning them. Duplicates are skipped
+  // by the unique constraint, so a retry is safe. On a full fetch
+  // (lastHistoryId null — first scan or 404 fallback) we always advance.
+  if (fetchFailed && lastHistoryId) {
+    newHistoryId = null;
+  }
 
   return { emails, newHistoryId };
+}
+
+/**
+ * List every message ID currently in the inbox (paginated).
+ * Used by the reconciliation safety-net to detect inbox emails the
+ * incremental history sync may have dropped.
+ */
+export async function listInboxMessageIds(
+  tokens: GoogleTokens,
+): Promise<string[]> {
+  const { gmail } = getGmailClient(tokens);
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  do {
+    const r = await gmail.users.messages.list({
+      userId: "me",
+      q: "in:inbox",
+      maxResults: 500,
+      pageToken,
+    });
+    for (const m of r.data.messages ?? []) if (m.id) ids.push(m.id);
+    pageToken = r.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return ids;
+}
+
+/**
+ * Fetch and parse specific messages by ID. Individual fetch failures are
+ * skipped (logged), so a few bad IDs don't abort the whole batch.
+ */
+export async function fetchMessagesByIds(
+  tokens: GoogleTokens,
+  ids: string[],
+): Promise<RawEmail[]> {
+  const { gmail } = getGmailClient(tokens);
+  const emails: RawEmail[] = [];
+  for (const id of ids) {
+    try {
+      const msg = await gmail.users.messages.get({
+        userId: "me",
+        id,
+        format: "full",
+      });
+      const parsed = parseMessage(msg.data);
+      if (parsed) emails.push(parsed);
+    } catch (err) {
+      console.warn(`Failed to fetch message ${id} during reconcile:`, err);
+    }
+  }
+  return emails;
 }
 
 /**
