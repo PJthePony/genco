@@ -1,18 +1,90 @@
 <script setup>
-defineProps({
+import { ref } from 'vue'
+
+const props = defineProps({
   card: Object,
 })
 
-defineEmits(['expand', 'quick-approve'])
+const emit = defineEmits(['expand', 'quick-approve', 'archive'])
 
 function truncate(text, max) {
   if (!text || text.length <= max) return text
   return text.slice(0, max).trimEnd() + '...'
 }
+
+// ── Swipe-left-to-archive ──
+const ARM_THRESHOLD = 80   // px past which release triggers archive
+const TAP_SLOP = 8         // px of movement before we treat it as a drag, not a tap
+
+const dragX = ref(0)
+const dragging = ref(false)
+const armed = ref(false)   // dragged far enough that release will archive
+let startX = 0
+let pointerId = null
+let didDrag = false
+
+function onPointerDown(e) {
+  // Only primary button / touch contact
+  if (e.button !== undefined && e.button !== 0) return
+  startX = e.clientX
+  pointerId = e.pointerId
+  dragging.value = true
+  didDrag = false
+}
+
+function onPointerMove(e) {
+  if (!dragging.value || e.pointerId !== pointerId) return
+  const dx = e.clientX - startX
+  if (!didDrag && Math.abs(dx) > TAP_SLOP) {
+    didDrag = true
+    // Capture so we keep receiving moves even if the pointer leaves the row
+    e.currentTarget.setPointerCapture?.(pointerId)
+  }
+  if (!didDrag) return
+  // Only allow swiping to the left
+  dragX.value = Math.min(0, dx)
+  armed.value = dragX.value <= -ARM_THRESHOLD
+}
+
+function onPointerUp(e) {
+  if (!dragging.value) return
+  dragging.value = false
+  if (armed.value) {
+    // Fling the row off to the left, then let the parent clear it
+    dragX.value = -window.innerWidth
+    emit('archive')
+  } else {
+    dragX.value = 0
+  }
+  armed.value = false
+}
+
+// Swallow the click that follows a real drag so we don't also expand the row
+function onClickCapture(e) {
+  if (didDrag) {
+    e.stopPropagation()
+    e.preventDefault()
+    didDrag = false
+  }
+}
 </script>
 
 <template>
-  <div class="compact-row" :class="{ cleared: card.cleared, urgent: card.isUrgent }">
+  <div class="compact-swipe" :class="{ cleared: card.cleared }">
+    <div class="swipe-bg" :class="{ armed }" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+      <span>Archive</span>
+    </div>
+    <div
+      class="compact-row"
+      :class="{ urgent: card.isUrgent, dragging }"
+      :style="{ transform: `translateX(${dragX}px)` }"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerUp"
+      @click.capture="onClickCapture"
+    >
     <div class="compact-avatar" :class="card.avatarClass">{{ card.initials }}</div>
     <div class="compact-content" @click="$emit('expand')">
       <div class="compact-top">
@@ -33,28 +105,64 @@ function truncate(text, max) {
         <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </button>
     </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* Swipe-to-archive wrapper */
+.compact-swipe {
+  position: relative;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.compact-swipe.cleared {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Archive affordance revealed behind the row as it slides left */
+.swipe-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-right: 18px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.swipe-bg.armed {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
 .compact-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 0;
   border-bottom: 1px solid var(--color-border);
-  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--color-surface);
+  touch-action: pan-y;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.compact-row:last-child { border-bottom: none; }
-
-.compact-row.cleared {
-  opacity: 0;
-  max-height: 0;
-  padding: 0;
-  overflow: hidden;
-  border-color: transparent;
+.compact-row.dragging {
+  transition: none;
 }
+
+.compact-swipe:last-child .compact-row { border-bottom: none; }
 
 .compact-row.urgent {
   border-left: 2px solid var(--color-accent);

@@ -77,6 +77,15 @@ function handleSkip(cardId) {
   expandedCardId.value = null
   emit('skip', cardId)
 }
+
+function handleSwipeArchive(card) {
+  // iMessages aren't archivable — they're already handled on the phone, so dismiss.
+  if (card.type === 'message') {
+    emit('approve', card.id, 'Dismissed')
+    return
+  }
+  emit('approve', card.id, 'Archived', { overrideAction: 'archive' })
+}
 </script>
 
 <template>
@@ -138,6 +147,7 @@ function handleSkip(cardId) {
           :card="card"
           @expand="expandedCardId = card.id"
           @quick-approve="handleQuickApprove(card)"
+          @archive="handleSwipeArchive(card)"
         />
       </template>
     </div>
