@@ -5,16 +5,13 @@ import { useAuth } from '../composables/useAuth'
 import { useFeedback } from '../composables/useFeedback'
 import { useGroupedQueue } from '../composables/useGroupedQueue'
 import { useDigest } from '../composables/useDigest'
-import { useNetwork } from '../composables/useNetwork'
 import { useUnread } from '../composables/useUnread'
 import { api } from '../composables/useApi'
 import AppHeader from '../components/AppHeader.vue'
 import ActionSection from '../components/ActionSection.vue'
-import FollowUpSection from '../components/FollowUpSection.vue'
 import DailyDigest from '../components/DailyDigest.vue'
 import EmailModal from '../components/EmailModal.vue'
 import SettingsModal from '../components/SettingsModal.vue'
-import NetworkModal from '../components/NetworkModal.vue'
 import ToastNotification from '../components/ToastNotification.vue'
 
 const route = useRoute()
@@ -23,7 +20,6 @@ const { signOut } = useAuth()
 const { addFeedback, feedbackLog, overrideStats, totalOverrides, clearFeedback } = useFeedback()
 const { sections, items: cards, loading, scanning, error, remaining, urgentCount, fetchQueue, scanInbox, executeAction, overrideAction, generateDraft: generateReplyDraft, fetchDirectionSuggestions: fetchQueueSuggestions, sendReply: sendQueueReply } = useGroupedQueue()
 const { items: digestItems, fetchDigest, promoteItem } = useDigest()
-const { followUps, followUpCount, fetchFollowUps, actOnFollowUp, generateDraft, fetchDirectionSuggestions, sendFollowUp, saveDraftToGmail, sendFollowUpAsMessage, scanThreads, scanningThreads, scanProgress } = useNetwork()
 const { markSeen, refreshCount, startPolling, stopPolling } = useUnread()
 
 const actionSection = computed(() => sections.value.find(s => s.key === 'action'))
@@ -49,90 +45,6 @@ function showToast(message) {
 
 // ── Settings ──
 const settingsOpen = ref(false)
-
-// ── Network ──
-const networkModalOpen = ref(false)
-
-async function handleFollowUpSnooze(id, days) {
-  try {
-    await actOnFollowUp(id, 'snooze', days)
-    refreshCount()
-    showToast('Snoozed')
-  } catch (err) {
-    showToast('Snooze failed')
-  }
-}
-
-async function handleFollowUpDismiss(id) {
-  try {
-    await actOnFollowUp(id, 'dismiss')
-    refreshCount()
-    showToast('Dismissed')
-  } catch (err) {
-    showToast('Dismiss failed')
-  }
-}
-
-async function handleFollowUpNoise(id) {
-  try {
-    await actOnFollowUp(id, 'noise')
-    refreshCount()
-    showToast('Blocked — sender removed from network')
-  } catch (err) {
-    showToast('Block failed')
-  }
-}
-
-async function handleFetchSuggestions(id, resolve) {
-  try {
-    const opts = await fetchDirectionSuggestions(id)
-    resolve(opts)
-  } catch (err) {
-    showToast('Could not load suggestions')
-    resolve([])
-  }
-}
-
-async function handleGenerateDraft(id, opts, resolve) {
-  try {
-    const result = await generateDraft(id, opts)
-    // result is { draft, voiceLabel, voiceSource }
-    resolve(result?.draft || null)
-  } catch (err) {
-    showToast('Draft generation failed')
-    resolve(null)
-  }
-}
-
-async function handleSaveDraft(id, body) {
-  try {
-    await saveDraftToGmail(id, body)
-    refreshCount()
-    showToast('Draft saved to Gmail')
-  } catch (err) {
-    showToast('Failed to save draft')
-  }
-}
-
-async function handleSendMessage(id, body) {
-  try {
-    await sendFollowUpAsMessage(id, body)
-    refreshCount()
-    showToast('Message queued for sending')
-  } catch (err) {
-    showToast('Failed to queue message')
-  }
-}
-
-async function handleSendNow(id, body, opts = {}) {
-  try {
-    await sendFollowUp(id, body, opts)
-    refreshCount()
-    showToast(opts.cc?.length ? 'Sent (calendar assistant CC\'d)' : 'Sent')
-  } catch (err) {
-    showToast('Send failed')
-  }
-}
 
 // ── Action Queue reply flow (emails) ──
 
@@ -372,10 +284,7 @@ function handleOverride(entry) {
 // ── Scan (inbox + threads in one button) ──
 async function handleScan() {
   try {
-    // Run sequentially — both endpoints refresh Gmail tokens independently,
-    // and parallel refresh can race (one invalidates the other's token).
     await scanInbox()
-    await scanThreads()
     markSeen()
     await fetchDigest()
     showToast('Scan complete')
@@ -525,7 +434,6 @@ onMounted(async () => {
   await fetchQueue()
   markSeen()
   await fetchDigest()
-  fetchFollowUps()
   loadBriefingSources()
   startPolling()
 })
@@ -596,22 +504,6 @@ onUnmounted(() => {
         @send="handleQueueSend"
       />
 
-      <!-- Follow Up (proactive outreach) -->
-      <FollowUpSection
-        :items="followUps"
-        :scanning="scanningThreads"
-        :scan-progress="scanProgress"
-        @snooze="handleFollowUpSnooze"
-        @dismiss="handleFollowUpDismiss"
-        @noise="handleFollowUpNoise"
-        @save-draft="handleSaveDraft"
-        @send-imessage="handleSendMessage"
-        @send="handleSendNow"
-        @fetch-suggestions="handleFetchSuggestions"
-        @generate-draft="handleGenerateDraft"
-        @manage-network="networkModalOpen = true"
-      />
-
       <!-- Archive (low priority cleanup) -->
       <ActionSection
         v-if="archiveSection"
@@ -645,11 +537,6 @@ onUnmounted(() => {
       @remove-source="removeBriefingSource"
       @add-source="loadBriefingSources"
       @clear-feedback="clearFeedback"
-    />
-
-    <NetworkModal
-      :open="networkModalOpen"
-      @close="networkModalOpen = false"
     />
 
     <ToastNotification :message="toastMessage" :visible="toastVisible" />
